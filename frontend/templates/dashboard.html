@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Tổng quan | Crow Detection Portal{% endblock %}
+
+{% block content %}
+<section class="page-head">
+    <div>
+        <p class="eyebrow">Tổng quan hệ thống</p>
+        <h2>Bảng điều khiển vận hành</h2>
+        <p class="muted">Theo dõi nhanh người dùng, camera và trạng thái các chức năng phát hiện.</p>
+    </div>
+    <a class="button primary" href="{{ url_for('test_video_page') }}">Chạy test video</a>
+</section>
+
+<section class="stats-grid">
+    <a href="{{ url_for('cameras_page') }}" style="text-decoration: none; color: inherit;">
+        <article class="stat-card accent">
+            <span class="stat-label">Tổng xe trong ngày</span>
+            <strong>{{ stats.total_vehicles }}</strong>
+            <p>Số phương tiện ghi nhận hôm nay.</p>
+            <small>→ Xem chi tiết camera</small>
+        </article>
+    </a>
+
+    <a href="{{ url_for('test_video_page') }}" style="text-decoration: none; color: inherit;">
+        <article class="stat-card warning">
+            <span class="stat-label">Xe vi phạm hôm nay</span>
+            <strong>{{ stats.violation_count }}</strong>
+            <p>Phát hiện đỗ sai / Tắc nghẽn.</p>
+            <small style="color: #e67e22;">→ Kiểm tra luồng phát hiện</small>
+        </article>
+    </a>
+
+    <article class="stat-card">
+        <span class="stat-label">Biển số gần nhất</span>
+        <div style="margin-top: 10px; text-align: left;">
+            {% if stats.recent_plates %}
+                {% for item in stats.recent_plates %}
+                    <div style="font-family: 'Courier New', Courier, monospace; font-weight: bold; border-bottom: 1px solid #eee; padding: 2px 0;">
+                        {{ item.license_plate }} 
+                        <span style="font-size: 0.7rem; color: gray;">({{ item.created_at.split(' ')[1] }})</span>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="muted">Chưa có dữ liệu...</p>
+            {% endif %}
+        </div>
+    </article>
+</section>
+
+<section class="split-layout two-columns">
+    <article class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Truy cập nhanh</p>
+                <h3>Các tác vụ chính</h3>
+            </div>
+        </div>
+        <div class="action-list">
+            {% if current_user.role == 'admin' %}
+            <a class="action-tile" href="{{ url_for('users_page') }}">
+                <strong>Quản lý tài khoản</strong>
+                <p>Thêm, sửa, khóa hoặc xóa tài khoản người dùng.</p>
+            </a>
+            {% endif %}
+            <a class="action-tile" href="{{ url_for('cameras_page') }}">
+                <strong>Quản lý camera</strong>
+                <p>Khai báo nguồn camera, ROI, vùng cấm đỗ và bật hoặc tắt chức năng detect.</p>
+            </a>
+            <a class="action-tile" href="{{ url_for('test_video_page') }}">
+                <strong>Test bằng video</strong>
+                <p>Upload video hoặc chọn đường dẫn local để kiểm tra luồng phát hiện.</p>
+            </a>
+        </div>
+    </article>
+
+    <article class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Camera gần đây</p>
+                <h3>Cấu hình mới cập nhật</h3>
+            </div>
+        </div>
+
+        {% if stats.recent_cameras %}
+        <div class="camera-list compact-list">
+            {% for camera in stats.recent_cameras %}
+            <article class="camera-mini-card">
+                <div class="camera-mini-head">
+                    <strong>{{ camera.name }}</strong>
+                    <span class="badge {% if camera.is_active %}success{% else %}muted{% endif %}">
+                        {{ 'Đang bật' if camera.is_active else 'Tắt' }}
+                    </span>
+                </div>
+                <p class="muted small">{{ camera.stream_source or 'Chưa có nguồn camera' }}</p>
+                <div class="pill-row">
+                    <span class="pill {% if camera.enable_congestion %}teal{% else %}gray{% endif %}">
+                        Tắc nghẽn {{ 'ON' if camera.enable_congestion else 'OFF' }}
+                    </span>
+                    <span class="pill {% if camera.enable_illegal_parking %}orange{% else %}gray{% endif %}">
+                        Đỗ sai {{ 'ON' if camera.enable_illegal_parking else 'OFF' }}
+                    </span>
+                    <span class="pill {% if camera.enable_license_plate %}teal{% else %}gray{% endif %}">
+                        Biển số {{ 'ON' if camera.enable_license_plate else 'OFF' }}
+                    </span>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <h3>Chưa có camera nào</h3>
+            <p>Thêm camera đầu tiên để bắt đầu cấu hình hiển thị và phát hiện.</p>
+        </div>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

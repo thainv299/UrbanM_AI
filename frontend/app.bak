@@ -1,0 +1,963 @@
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+import sys
+import textwrap
+import time
+import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from functools import wraps
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import cv2
+import numpy as np
+from flask import (
+    Flask,
+    Response,
+    abort,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    send_from_directory,
+    session,
+    url_for,
+)
+from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
+
+APP_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = APP_DIR.parent
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from database import (
+    count_admin_users,
+    create_camera,
+    create_user,
+    delete_camera,
+    delete_user,
+    get_camera,
+    get_dashboard_stats,
+    get_user_by_id,
+    get_user_record_by_id,
+    get_user_record_by_username,
+    init_db,
+    list_cameras,
+    list_users,
+    update_camera,
+    update_user,
+    DB_PATH
+)
+from services.detection_bridge import process_video
+
+DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "best.pt"
+INPUTS_DIR = APP_DIR / "runtime" / "inputs"
+OUTPUTS_DIR = APP_DIR / "runtime" / "outputs"
+PREVIEWS_DIR = APP_DIR / "runtime" / "previews"
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".mpeg", ".mpg"}
+VALID_ROLES = {"admin", "operator"}
+
+app = Flask(
+    __name__,
+    template_folder=str(APP_DIR / "templates"),
+    static_folder=str(APP_DIR / "static"),
+)
+app.secret_key = os.environ.get("CROWD_PORTAL_SECRET", "crow-detection-web-secret")
+app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024
+
+executor = ThreadPoolExecutor(max_workers=1)
+job_lock = threading.Lock()
+jobs: Dict[str, Dict[str, Any]] = {}
+
+INPUTS_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)
+init_db()
+
+
+def is_api_request() -> bool:
+    return request.path.startswith("/api/")
+
+
+def json_error(message: str, status_code: int = 400) -> Response:
+    response = jsonify({"ok": False, "error": message})
+    response.status_code = status_code
+    return response
+
+
+def to_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_polygon(value: Any) -> Optional[list[list[int]]]:
+    if value in (None, "", []):
+        return None
+
+    if isinstance(value, str):
+        try:
+            data = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Polygon JSON không hợp lệ.") from exc
+    else:
+        data = value
+
+    if not isinstance(data, list):
+        raise ValueError("Polygon phải là một mảng điểm.")
+
+    normalized: list[list[int]] = []
+    for point in data:
+        if not isinstance(point, (list, tuple)) or len(point) != 2:
+            raise ValueError("Mỗi điểm polygon phải có đúng 2 tọa độ.")
+        normalized.append([int(point[0]), int(point[1])])
+
+    if normalized and len(normalized) < 3:
+        raise ValueError("Polygon cần tối thiểu 3 điểm.")
+
+    return normalized or None
+
+
+def parse_float(value: Any, default: float) -> float:
+    if value in (None, ""):
+        return default
+    return float(value)
+
+
+def parse_int(value: Any, default: int) -> int:
+    if value in (None, ""):
+        return default
+    return int(value)
+
+
+def resolve_path(path_text: str) -> Path:
+    candidate = Path(path_text).expanduser()
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    return candidate.resolve()
+
+
+def normalize_capture_source(source: str) -> Any:
+    stripped = (source or "").strip()
+    if not stripped:
+        return None
+    if stripped.isdigit():
+        return int(stripped)
+    return stripped
+
+
+def build_placeholder_frame(title: str, detail: str = "") -> bytes:
+    canvas = np.zeros((360, 640, 3), dtype=np.uint8)
+    canvas[:] = (21, 31, 39)
+    cv2.rectangle(canvas, (16, 16), (624, 344), (19, 98, 112), 2)
+    cv2.putText(
+        canvas,
+        "Camera Preview",
+        (28, 58),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.0,
+        (233, 249, 247),
+        2,
+    )
+    cv2.putText(
+        canvas,
+        title,
+        (28, 120),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (255, 208, 102),
+        2,
+    )
+    for index, line in enumerate(textwrap.wrap(detail, width=42)[:4]):
+        cv2.putText(
+            canvas,
+            line,
+            (28, 170 + (index * 34)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            (214, 224, 233),
+            2,
+        )
+
+    success, encoded = cv2.imencode(".jpg", canvas)
+    if not success:
+        raise RuntimeError("Không thể tạo ảnh preview.")
+    return encoded.tobytes()
+
+
+def encode_jpeg(frame: np.ndarray) -> bytes:
+    success, encoded = cv2.imencode(".jpg", frame)
+    if not success:
+        raise RuntimeError("Không thể mã hóa ảnh preview.")
+    return encoded.tobytes()
+
+
+def prepare_snapshot_frame(frame: np.ndarray, camera: Dict[str, Any]) -> np.ndarray:
+    display = frame.copy()
+
+    if camera.get("roi_points"):
+        roi_polygon = np.array(camera["roi_points"], dtype=np.int32)
+        cv2.polylines(display, [roi_polygon], True, (255, 0, 0), 2)
+    if camera.get("no_parking_points"):
+        polygon = np.array(camera["no_parking_points"], dtype=np.int32)
+        overlay = display.copy()
+        cv2.fillPoly(overlay, [polygon], (0, 0, 160))
+        cv2.addWeighted(overlay, 0.15, display, 0.85, 0, display)
+        cv2.polylines(display, [polygon], True, (0, 0, 255), 2)
+
+    cv2.rectangle(display, (0, 0), (display.shape[1], 68), (11, 20, 26), -1)
+    cv2.putText(
+        display,
+        camera["name"],
+        (18, 28),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (255, 255, 255),
+        2,
+    )
+    feature_text = (
+        f"Tac nghen: {'ON' if camera['enable_congestion'] else 'OFF'} | "
+        f"Do xe sai quy dinh: {'ON' if camera['enable_illegal_parking'] else 'OFF'} | "
+        f"Bien so: {'ON' if camera['enable_license_plate'] else 'OFF'}"
+    )
+    cv2.putText(
+        display,
+        feature_text,
+        (18, 56),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        (171, 208, 199),
+        2,
+    )
+    return display
+
+
+def get_current_user() -> Optional[Dict[str, Any]]:
+    return getattr(g, "current_user", None)
+
+
+def login_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        if get_current_user() is None:
+            if is_api_request():
+                return json_error("Bạn cần đăng nhập để tiếp tục.", 401)
+            return redirect(url_for("login"))
+        return view_func(*args, **kwargs)
+
+    return wrapped
+
+
+def admin_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        current_user = get_current_user()
+        if current_user is None:
+            if is_api_request():
+                return json_error("Bạn cần đăng nhập để tiếp tục.", 401)
+            return redirect(url_for("login"))
+        if current_user["role"] != "admin":
+            if is_api_request():
+                return json_error("Bạn không có quyền truy cập chức năng này.", 403)
+            abort(403)
+        return view_func(*args, **kwargs)
+
+    return wrapped
+
+
+def set_job(job_id: str, **updates: Any) -> Dict[str, Any]:
+    with job_lock:
+        job = jobs.setdefault(job_id, {"id": job_id})
+        job.update(updates)
+        return dict(job)
+
+
+def get_job(job_id: str) -> Optional[Dict[str, Any]]:
+    with job_lock:
+        job = jobs.get(job_id)
+        return dict(job) if job is not None else None
+
+
+def get_queue_position(job_id: str) -> Optional[int]:
+    with job_lock:
+        active_jobs = [
+            item
+            for item in jobs.values()
+            if item.get("status") in {"queued", "running"}
+        ]
+        active_jobs.sort(key=lambda item: item.get("submitted_at", 0.0))
+
+    for index, item in enumerate(active_jobs, start=1):
+        if item.get("id") == job_id and item.get("status") == "queued":
+            return index
+    return None
+
+
+def preview_path_for_job(job_id: str) -> Path:
+    return PREVIEWS_DIR / f"{job_id}.jpg"
+
+
+def public_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    payload = dict(job)
+    output_filename = payload.get("output_filename")
+    payload["result_url"] = (
+        url_for("serve_result_video", filename=output_filename)
+        if output_filename
+        else None
+    )
+    payload["input_video_url"] = (
+        url_for("serve_test_job_source", job_id=payload["id"])
+        if payload.get("source_video")
+        else None
+    )
+    payload["preview_image_url"] = url_for("serve_test_job_preview", job_id=payload["id"])
+    payload["queue_position"] = get_queue_position(payload.get("id", ""))
+    return payload
+
+
+def run_detection_job(
+    job_id: str,
+    input_path: str,
+    output_filename: str,
+    detection_settings: Dict[str, Any],
+) -> None:
+    output_path = OUTPUTS_DIR / output_filename
+
+    def handle_progress(progress: Dict[str, Any]) -> None:
+        progress_payload = dict(progress)
+        preview_jpeg = progress_payload.pop("preview_jpeg", None)
+        if preview_jpeg:
+            preview_path_for_job(job_id).write_bytes(preview_jpeg)
+
+        phase = progress.get("phase")
+        percent = progress.get("progress_percent")
+        processed_frames = progress.get("processed_frames")
+        total_frames = progress.get("source_total_frames")
+
+        if phase == "loading_model":
+            message = "Dang tai model YOLO..."
+        elif phase == "finalizing_output":
+            message = "Dang hoan tat video ket qua..."
+        elif processed_frames is not None:
+            total_text = total_frames if total_frames else "?"
+            if percent is None:
+                message = f"Dang xu ly {processed_frames}/{total_text} frame..."
+            else:
+                message = f"Dang xu ly {processed_frames}/{total_text} frame ({percent:.1f}%)"
+        else:
+            message = "Dang xu ly video..."
+
+        set_job(
+            job_id,
+            status="running",
+            message=message,
+            error=None,
+            started_at=time.time(),
+            progress=progress_payload,
+        )
+
+    set_job(
+        job_id,
+        status="running",
+        message="Dang khoi tao job detect...",
+        error=None,
+        started_at=time.time(),
+        progress={
+            "phase": "starting",
+            "processed_frames": 0,
+            "source_total_frames": None,
+            "progress_percent": 0.0,
+            "elapsed_seconds": 0.0,
+            "latest_status": "Dang khoi tao job detect...",
+        },
+    )
+
+    try:
+        summary = process_video(
+            input_path=input_path,
+            output_path=str(output_path),
+            settings=detection_settings,
+            progress_callback=handle_progress,
+        )
+        # --- ĐOẠN CODE LƯU DATABASE ---
+        if summary:
+            try:
+                total_v = summary.get("max_vehicle_count", 0)
+                total_vi = summary.get("parking_violation_count", 0)
+                violation_ids = summary.get("parking_violation_ids", [])
+
+                with sqlite3.connect(DB_PATH) as conn:
+                    conn.text_factory = str
+                    # Lưu tổng xe
+                    for i in range(total_v):
+                        conn.execute(
+                            "INSERT INTO vehicle_logs (license_plate, created_at) VALUES (?, datetime('now', 'localtime'))",
+                            (f"XE-{job_id[:4]}-{i+1}",)
+                        )
+                    # Lưu xe vi phạm
+                    for v_id in violation_ids:
+                        conn.execute(
+                            "INSERT INTO violations (license_plate, type, created_at) VALUES (?, ?, datetime('now', 'localtime'))",
+                            (f"VP-{v_id}", "Do xe sai quy dinh")
+                        )
+                    conn.commit()
+            except Exception as e:
+                print(f"Lỗi cập nhật Dashboard: {e}")
+        set_job(
+            job_id,
+            status="completed",
+            message="Da hoan thanh xu ly video.",
+            error=None,
+            summary=summary,
+            output_filename=output_filename,
+            finished_at=time.time(),
+            progress={
+                "phase": "completed",
+                "processed_frames": summary.get("processed_frames"),
+                "source_total_frames": summary.get("source_total_frames"),
+                "progress_percent": 100.0,
+                "elapsed_seconds": summary.get("processing_seconds"),
+                "latest_status": summary.get("latest_status"),
+            },
+        )
+    except Exception as exc:
+        try:
+            if output_path.exists():
+                output_path.unlink()
+        except OSError:
+            pass
+        set_job(
+            job_id,
+            status="failed",
+            message="Xu ly video that bai.",
+            error=str(exc),
+            summary=None,
+            output_filename=None,
+            finished_at=time.time(),
+        )
+
+
+def validate_user_payload(payload: Dict[str, Any], creating: bool) -> Dict[str, Any]:
+    username = str(payload.get("username", "")).strip()
+    full_name = str(payload.get("full_name", "")).strip()
+    role = str(payload.get("role", "operator")).strip().lower()
+    password = str(payload.get("password", "")).strip()
+
+    if not username:
+        raise ValueError("Tên đăng nhập không được để trống.")
+    if not full_name:
+        raise ValueError("Họ tên không được để trống.")
+    if role not in VALID_ROLES:
+        raise ValueError("Vai trò không hợp lệ.")
+    if creating and len(password) < 6:
+        raise ValueError("Mật khẩu cần tối thiểu 6 ký tự.")
+
+    normalized = {
+        "username": username,
+        "full_name": full_name,
+        "role": role,
+        "is_active": to_bool(payload.get("is_active"), True),
+    }
+    if password:
+        normalized["password_hash"] = generate_password_hash(password)
+
+    return normalized
+
+
+def validate_camera_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        raise ValueError("Tên camera không được để trống.")
+
+    normalized = {
+        "name": name,
+        "stream_source": str(payload.get("stream_source", "")).strip(),
+        "description": str(payload.get("description", "")).strip(),
+        "roi_points": parse_polygon(payload.get("roi_points")),
+        "no_parking_points": parse_polygon(payload.get("no_parking_points")),
+        "enable_congestion": to_bool(payload.get("enable_congestion"), True),
+        "enable_illegal_parking": to_bool(payload.get("enable_illegal_parking"), True),
+        "enable_license_plate": to_bool(payload.get("enable_license_plate"), True),
+        "is_active": to_bool(payload.get("is_active"), True),
+    }
+    return normalized
+
+
+def build_test_settings(form_data: Any, camera: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    model_path_text = str(form_data.get("model_path", "")).strip() or str(DEFAULT_MODEL_PATH)
+    model_path = resolve_path(model_path_text)
+
+    if not model_path.exists():
+        raise ValueError(f"Không tìm thấy model: {model_path}")
+
+    roi_value = form_data.get("roi_points")
+    parking_value = form_data.get("no_parking_points")
+
+    roi_points = parse_polygon(roi_value) if roi_value not in (None, "") else None
+    no_parking_points = (
+        parse_polygon(parking_value) if parking_value not in (None, "") else None
+    )
+
+    if camera is not None:
+        if roi_points is None:
+            roi_points = camera.get("roi_points")
+        if no_parking_points is None:
+            no_parking_points = camera.get("no_parking_points")
+
+    enable_congestion = (
+        to_bool(form_data.get("enable_congestion"), True)
+        if "enable_congestion" in form_data
+        else (camera["enable_congestion"] if camera else True)
+    )
+    enable_illegal_parking = (
+        to_bool(form_data.get("enable_illegal_parking"), True)
+        if "enable_illegal_parking" in form_data
+        else (camera["enable_illegal_parking"] if camera else True)
+    )
+    enable_license_plate = (
+        to_bool(form_data.get("enable_license_plate"), True)
+        if "enable_license_plate" in form_data
+        else (camera["enable_license_plate"] if camera else True)
+    )
+
+    return {
+        "model_path": str(model_path),
+        "confidence_threshold": parse_float(form_data.get("confidence_threshold"), 0.32),
+        "enable_congestion": enable_congestion,
+        "enable_illegal_parking": enable_illegal_parking,
+        "enable_license_plate": enable_license_plate,
+        "stop_seconds": parse_float(form_data.get("stop_seconds"), 30.0),
+        "parking_move_threshold_px": parse_float(
+            form_data.get("parking_move_threshold_px"),
+            10.0,
+        ),
+        "process_every_n_frames": parse_int(form_data.get("process_every_n_frames"), 2),
+        "roi_points": roi_points,
+        "no_parking_points": no_parking_points,
+    }
+
+
+@app.before_request
+def load_logged_in_user() -> None:
+    user_id = session.get("user_id")
+    if user_id is None:
+        g.current_user = None
+        return
+
+    user = get_user_by_id(int(user_id))
+    if user is None or not user["is_active"]:
+        session.clear()
+        g.current_user = None
+        return
+
+    g.current_user = user
+
+
+@app.context_processor
+def inject_template_context() -> Dict[str, Any]:
+    return {
+        "current_user": get_current_user(),
+    }
+
+
+@app.get("/")
+def index() -> Response:
+    if get_current_user() is not None:
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login() -> Response:
+    if get_current_user() is not None:
+        return redirect(url_for("dashboard"))
+
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        user_record = get_user_record_by_username(username)
+
+        if user_record is None or not check_password_hash(user_record["password_hash"], password):
+            error = "Tên đăng nhập hoặc mật khẩu không đúng."
+        elif not bool(user_record["is_active"]):
+            error = "Tài khoản này đang bị khóa."
+        else:
+            session.clear()
+            session["user_id"] = int(user_record["id"])
+            return redirect(url_for("dashboard"))
+
+    return render_template("login.html", page="login", error=error)
+
+
+@app.post("/logout")
+def logout() -> Response:
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.get("/dashboard")
+@login_required
+def dashboard() -> Response:
+    return render_template(
+        "dashboard.html",
+        page="dashboard",
+        stats=get_dashboard_stats(),
+    )
+
+
+@app.get("/users")
+@admin_required
+def users_page() -> Response:
+    return render_template("users.html", page="users")
+
+
+@app.get("/cameras")
+@login_required
+def cameras_page() -> Response:
+    return render_template("cameras.html", page="cameras")
+
+
+@app.get("/test-video")
+@login_required
+def test_video_page() -> Response:
+    return render_template(
+        "test_video.html",
+        page="test-video",
+        cameras=list_cameras(),
+        default_model_path=str(DEFAULT_MODEL_PATH),
+    )
+
+
+@app.get("/results/<path:filename>")
+@login_required
+def serve_result_video(filename: str) -> Response:
+    return send_from_directory(OUTPUTS_DIR, filename)
+
+
+@app.get("/job-sources/<job_id>")
+@login_required
+def serve_test_job_source(job_id: str) -> Response:
+    job = get_job(job_id)
+    if job is None:
+        abort(404)
+
+    source_video = job.get("source_video")
+    if not source_video:
+        abort(404)
+
+    source_path = Path(str(source_video))
+    if not source_path.exists() or source_path.suffix.lower() not in ALLOWED_VIDEO_EXTENSIONS:
+        abort(404)
+
+    return send_file(source_path, conditional=True)
+
+
+@app.get("/job-previews/<job_id>.jpg")
+@login_required
+def serve_test_job_preview(job_id: str) -> Response:
+    job = get_job(job_id)
+    if job is None:
+        abort(404)
+
+    preview_path = preview_path_for_job(job_id)
+    if preview_path.exists():
+        response = send_file(preview_path, mimetype="image/jpeg", conditional=False)
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        return response
+
+    status = str(job.get("status", "queued"))
+    if status == "running":
+        title = "Dang phan tich video"
+    elif status == "completed":
+        title = "Da hoan tat xu ly"
+    elif status == "failed":
+        title = "Khong tao duoc preview"
+    else:
+        title = "Dang cho den luot xu ly"
+
+    detail = str(job.get("message", ""))
+    response = Response(build_placeholder_frame(title, detail), mimetype="image/jpeg")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
+
+
+@app.get("/api/session")
+@login_required
+def api_session() -> Response:
+    return jsonify({"ok": True, "user": get_current_user()})
+
+
+@app.get("/api/dashboard")
+@login_required
+def api_dashboard() -> Response:
+    return jsonify({"ok": True, "stats": get_dashboard_stats()})
+
+
+@app.get("/api/users")
+@admin_required
+def api_list_users() -> Response:
+    return jsonify({"ok": True, "users": list_users()})
+
+
+@app.post("/api/users")
+@admin_required
+def api_create_user() -> Response:
+    payload = request.get_json(silent=True) or {}
+    try:
+        user_payload = validate_user_payload(payload, creating=True)
+        created = create_user(user_payload)
+        return jsonify({"ok": True, "user": created}), 201
+    except ValueError as exc:
+        return json_error(str(exc), 400)
+    except sqlite3.IntegrityError:
+        return json_error("Tên đăng nhập đã tồn tại.", 409)
+
+
+@app.put("/api/users/<int:user_id>")
+@admin_required
+def api_update_user(user_id: int) -> Response:
+    payload = request.get_json(silent=True) or {}
+    existing = get_user_record_by_id(user_id)
+    if existing is None:
+        return json_error("Không tìm thấy người dùng.", 404)
+
+    try:
+        user_payload = validate_user_payload(payload, creating=False)
+        if "password_hash" not in user_payload and not payload.get("password"):
+            user_payload.pop("password_hash", None)
+
+        if existing["role"] == "admin" and user_payload["role"] != "admin" and count_admin_users() <= 1:
+            return json_error("Cần giữ lại ít nhất một tài khoản admin.", 400)
+
+        updated = update_user(user_id, user_payload)
+        if updated is None:
+            return json_error("Không tìm thấy người dùng.", 404)
+        return jsonify({"ok": True, "user": updated})
+    except ValueError as exc:
+        return json_error(str(exc), 400)
+    except sqlite3.IntegrityError:
+        return json_error("Tên đăng nhập đã tồn tại.", 409)
+
+
+@app.delete("/api/users/<int:user_id>")
+@admin_required
+def api_delete_user(user_id: int) -> Response:
+    current_user = get_current_user()
+    target = get_user_record_by_id(user_id)
+    if target is None:
+        return json_error("Không tìm thấy người dùng.", 404)
+    if current_user is not None and current_user["id"] == user_id:
+        return json_error("Không thể tự xóa chính mình.", 400)
+    if target["role"] == "admin" and count_admin_users() <= 1:
+        return json_error("Cần giữ lại ít nhất một tài khoản admin.", 400)
+
+    deleted = delete_user(user_id)
+    if not deleted:
+        return json_error("Không thể xóa người dùng.", 400)
+    return jsonify({"ok": True})
+
+
+@app.get("/api/cameras")
+@login_required
+def api_list_cameras() -> Response:
+    return jsonify({"ok": True, "cameras": list_cameras()})
+
+
+@app.post("/api/cameras")
+@login_required
+def api_create_camera() -> Response:
+    payload = request.get_json(silent=True) or {}
+    try:
+        camera_payload = validate_camera_payload(payload)
+        created = create_camera(camera_payload)
+        return jsonify({"ok": True, "camera": created}), 201
+    except ValueError as exc:
+        return json_error(str(exc), 400)
+    except sqlite3.IntegrityError:
+        return json_error("Tên camera đã tồn tại.", 409)
+
+
+@app.put("/api/cameras/<int:camera_id>")
+@login_required
+def api_update_camera(camera_id: int) -> Response:
+    payload = request.get_json(silent=True) or {}
+    if get_camera(camera_id) is None:
+        return json_error("Không tìm thấy camera.", 404)
+
+    try:
+        camera_payload = validate_camera_payload(payload)
+        updated = update_camera(camera_id, camera_payload)
+        if updated is None:
+            return json_error("Không tìm thấy camera.", 404)
+        return jsonify({"ok": True, "camera": updated})
+    except ValueError as exc:
+        return json_error(str(exc), 400)
+    except sqlite3.IntegrityError:
+        return json_error("Tên camera đã tồn tại.", 409)
+
+
+@app.delete("/api/cameras/<int:camera_id>")
+@login_required
+def api_delete_camera(camera_id: int) -> Response:
+    deleted = delete_camera(camera_id)
+    if not deleted:
+        return json_error("Không tìm thấy camera.", 404)
+    return jsonify({"ok": True})
+
+
+@app.get("/api/cameras/<int:camera_id>/snapshot")
+@login_required
+def api_camera_snapshot(camera_id: int) -> Response:
+    camera = get_camera(camera_id)
+    if camera is None:
+        return Response(build_placeholder_frame("Không tìm thấy camera."), mimetype="image/jpeg")
+
+    capture_source = normalize_capture_source(camera["stream_source"])
+    if capture_source is None:
+        return Response(
+            build_placeholder_frame("Chưa cấu hình nguồn camera.", camera["name"]),
+            mimetype="image/jpeg",
+        )
+
+    capture = cv2.VideoCapture(capture_source)
+    try:
+        success, frame = capture.read()
+    finally:
+        capture.release()
+
+    if not success or frame is None:
+        detail = camera["stream_source"] or "Nguồn camera trống."
+        return Response(
+            build_placeholder_frame("Không đọc được hình ảnh camera.", detail),
+            mimetype="image/jpeg",
+        )
+
+    prepared = prepare_snapshot_frame(frame, camera)
+    return Response(encode_jpeg(prepared), mimetype="image/jpeg")
+
+
+@app.post("/api/test-jobs")
+@login_required
+def api_create_test_job() -> Response:
+    job_id = uuid.uuid4().hex
+    camera = None
+    camera_id_text = request.form.get("camera_id", "").strip()
+    if camera_id_text:
+        camera = get_camera(int(camera_id_text))
+        if camera is None:
+            return json_error("Camera duoc chon khong ton tai.", 404)
+
+    upload_file = request.files.get("video_file")
+    local_path_text = request.form.get("local_path", "").strip()
+
+    if upload_file is not None and upload_file.filename:
+        extension = Path(upload_file.filename).suffix.lower()
+        if extension not in ALLOWED_VIDEO_EXTENSIONS:
+            return json_error("Dinh dang video khong duoc ho tro.", 400)
+        safe_name = secure_filename(upload_file.filename)
+        input_path = INPUTS_DIR / f"{job_id}_{safe_name}"
+        upload_file.save(input_path)
+    elif local_path_text:
+        input_path = resolve_path(local_path_text)
+        if not input_path.exists():
+            return json_error("Duong dan video local khong ton tai.", 400)
+        if input_path.suffix.lower() not in ALLOWED_VIDEO_EXTENSIONS:
+            return json_error("Dinh dang video khong duoc ho tro.", 400)
+    else:
+        return json_error("Hay chon file upload hoac nhap duong dan local.", 400)
+
+    try:
+        test_settings = build_test_settings(request.form, camera)
+    except ValueError as exc:
+        return json_error(str(exc), 400)
+
+    output_filename = f"{job_id}_result.mp4"
+    submitted_at = time.time()
+    set_job(
+        job_id,
+        status="queued",
+        message="Da nhan yeu cau. Job se duoc xu ly theo hang doi.",
+        error=None,
+        output_filename=None,
+        summary=None,
+        source_video=str(input_path),
+        submitted_at=submitted_at,
+        progress={
+            "phase": "queued",
+            "processed_frames": 0,
+            "source_total_frames": None,
+            "progress_percent": 0.0,
+            "elapsed_seconds": 0.0,
+            "latest_status": "Dang cho den luot xu ly...",
+        },
+    )
+    executor.submit(
+        run_detection_job,
+        job_id,
+        str(input_path),
+        output_filename,
+        test_settings,
+    )
+
+    return jsonify({"ok": True, "job": public_job(get_job(job_id) or {"id": job_id})}), 202
+
+
+@app.get("/api/test-jobs/<job_id>")
+@login_required
+def api_get_test_job(job_id: str) -> Response:
+    job = get_job(job_id)
+    if job is None:
+        return json_error("Không tìm thấy job kiểm tra.", 404)
+    return jsonify({"ok": True, "job": public_job(job)})
+
+
+@app.errorhandler(403)
+def handle_forbidden(_error: Exception) -> Response:
+    return render_template(
+        "error.html",
+        page="error",
+        status_code=403,
+        title="Không có quyền truy cập",
+        message="Tài khoản hiện tại không được phép mở trang này.",
+    ), 403
+
+
+@app.errorhandler(404)
+def handle_not_found(_error: Exception) -> Response:
+    return render_template(
+        "error.html",
+        page="error",
+        status_code=404,
+        title="Không tìm thấy nội dung",
+        message="Đường dẫn bạn mở không tồn tại trong web portal.",
+    ), 404
+
+
+@app.errorhandler(413)
+def handle_large_upload(_error: Exception) -> Response:
+    return render_template(
+        "error.html",
+        page="error",
+        status_code=413,
+        title="File quá lớn",
+        message="Video upload vượt quá giới hạn dung lượng cho phép.",
+    ), 413
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5000, debug=False)
+

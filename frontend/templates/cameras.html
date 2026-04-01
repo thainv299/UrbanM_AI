@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Camera | Crow Detection Portal{% endblock %}
+
+{% block content %}
+<section class="page-head">
+    <div>
+        <p class="eyebrow">Quản lý camera</p>
+        <h2>Hiển thị camera và cấu hình detect</h2>
+        <p class="muted">Lưu nguồn camera, mô tả, ROI, vùng cấm đỗ và bật hoặc tắt phát hiện tắc nghẽn, đỗ xe sai quy định.</p>
+    </div>
+</section>
+
+<div class="split-layout two-columns wide-gap">
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Danh sách</p>
+                <h3>Camera đã khai báo</h3>
+            </div>
+            <button type="button" class="button secondary" id="cameras-refresh">Làm mới</button>
+        </div>
+        <div id="cameras-feedback"></div>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Tên camera</th>
+                        <th>Nguồn</th>
+                        <th>Phát hiện</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="cameras-table-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Biểu mẫu</p>
+                <h3 id="camera-form-title">Thêm camera mới</h3>
+            </div>
+        </div>
+
+        <form id="camera-form" class="form-grid">
+            <input type="hidden" id="camera_id" name="camera_id">
+
+            <label class="field">
+                <span>Tên camera</span>
+                <input type="text" id="camera_name" name="name" required>
+            </label>
+
+            <label class="field">
+                <span>Nguồn camera</span>
+                <input type="text" id="stream_source" name="stream_source" placeholder="0, rtsp://..., hoặc đường dẫn file video">
+            </label>
+
+            <label class="field full-span">
+                <span>Mô tả</span>
+                <textarea id="description" name="description" rows="2" placeholder="Camera cổng chính, camera bãi đỗ..." ></textarea>
+            </label>
+
+            <label class="field full-span">
+                <span>ROI polygon (JSON)</span>
+                <textarea id="roi_points" name="roi_points" rows="4" placeholder='[[100,80],[900,80],[900,520],[100,520]]'></textarea>
+            </label>
+
+            <label class="field full-span">
+                <span>Vùng cấm đỗ (JSON)</span>
+                <textarea id="no_parking_points" name="no_parking_points" rows="4" placeholder='[[140,340],[860,340],[860,520],[140,520]]'></textarea>
+            </label>
+
+            <label class="toggle-field">
+                <input type="checkbox" id="enable_congestion" name="enable_congestion" checked>
+                <span>Bật phát hiện tắc nghẽn</span>
+            </label>
+
+            <label class="toggle-field">
+                <input type="checkbox" id="enable_illegal_parking" name="enable_illegal_parking" checked>
+                <span>Bật phát hiện đỗ xe sai quy định</span>
+            </label>
+
+            <label class="toggle-field">
+                <input type="checkbox" id="enable_license_plate" name="enable_license_plate" checked>
+                <span>Bật phát hiện biển số</span>
+            </label>
+
+            <label class="toggle-field full-span">
+                <input type="checkbox" id="camera_is_active" name="is_active" checked>
+                <span>Kích hoạt camera</span>
+            </label>
+
+            <div class="button-row full-span">
+                <button type="submit" class="button primary">Lưu camera</button>
+                <button type="button" class="button secondary" id="camera-form-reset">Đặt lại</button>
+            </div>
+        </form>
+    </section>
+</div>
+
+<section class="panel margin-top">
+    <div class="panel-header">
+        <div>
+            <p class="eyebrow">Hiển thị camera</p>
+            <h3>Preview camera và nút bật hoặc tắt nhanh</h3>
+        </div>
+    </div>
+    <div id="camera-preview-grid" class="camera-preview-grid"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/cameras.js') }}"></script>
+{% endblock %}

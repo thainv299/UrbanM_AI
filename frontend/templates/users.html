@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Người dùng | Crow Detection Portal{% endblock %}
+
+{% block content %}
+<section class="page-head">
+    <div>
+        <p class="eyebrow">Quản trị người dùng</p>
+        <h2>Tài khoản đăng nhập</h2>
+        <p class="muted">Tạo mới, cập nhật vai trò hoặc khóa tài khoản mà không cần sửa mã nguồn gốc.</p>
+    </div>
+</section>
+
+<div class="split-layout two-columns wide-gap">
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Danh sách</p>
+                <h3>Người dùng hiện có</h3>
+            </div>
+            <button type="button" class="button secondary" id="users-refresh">Làm mới</button>
+        </div>
+        <div id="users-feedback"></div>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Tên đăng nhập</th>
+                        <th>Họ tên</th>
+                        <th>Vai trò</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Biểu mẫu</p>
+                <h3 id="user-form-title">Tạo người dùng mới</h3>
+            </div>
+        </div>
+
+        <form id="user-form" class="form-grid">
+            <input type="hidden" id="user_id" name="user_id">
+
+            <label class="field">
+                <span>Tên đăng nhập</span>
+                <input type="text" id="username" name="username" required>
+            </label>
+
+            <label class="field">
+                <span>Họ tên</span>
+                <input type="text" id="full_name" name="full_name" required>
+            </label>
+
+            <label class="field">
+                <span>Mật khẩu</span>
+                <input type="password" id="password" name="password" placeholder="Để trống nếu không đổi khi cập nhật">
+            </label>
+
+            <label class="field">
+                <span>Vai trò</span>
+                <select id="role" name="role">
+                    <option value="admin">Admin</option>
+                    <option value="operator">Operator</option>
+                </select>
+            </label>
+
+            <label class="toggle-field">
+                <input type="checkbox" id="is_active" name="is_active" checked>
+                <span>Kích hoạt tài khoản</span>
+            </label>
+
+            <div class="button-row">
+                <button type="submit" class="button primary">Lưu người dùng</button>
+                <button type="button" class="button secondary" id="user-form-reset">Đặt lại</button>
+            </div>
+        </form>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/users.js') }}"></script>
+{% endblock %}

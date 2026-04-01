@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Đăng nhập | Crow Detection Portal{% endblock %}
+
+{% block content %}
+<section class="auth-layout">
+    <div class="auth-copy">
+        <p class="eyebrow">Nền tảng web độc lập</p>
+        <h2>Quản lý camera và kiểm tra phát hiện trên trình duyệt</h2>
+        <p class="lead">Portal này được viết riêng để kết nối frontend và backend mà không phải sửa bất kỳ file hiện có nào của project.</p>
+        <div class="hero-grid">
+            <article class="hero-card">
+                <h3>Quản lý tài khoản</h3>
+                <p>Tạo, khóa, cập nhật người dùng đăng nhập ngay trên web.</p>
+            </article>
+            <article class="hero-card">
+                <h3>Quản lý camera</h3>
+                <p>Lưu nguồn camera, ROI, vùng cấm đỗ và bật hoặc tắt từng chức năng detect.</p>
+            </article>
+            <article class="hero-card">
+                <h3>Test video</h3>
+                <p>Upload video hoặc dùng đường dẫn local để tạo video kết quả và xem lại trong portal.</p>
+            </article>
+        </div>
+    </div>
+
+    <form class="panel auth-panel" method="post" action="{{ url_for('login') }}">
+        <div class="panel-header compact">
+            <p class="eyebrow">Đăng nhập</p>
+            <h2>Vào hệ thống</h2>
+            <p class="muted">Dùng tài khoản quản trị hoặc vận hành đã được cấp.</p>
+        </div>
+
+        {% if error %}
+        <div class="notice error">{{ error }}</div>
+        {% endif %}
+
+        <label class="field">
+            <span>Tên đăng nhập</span>
+            <input type="text" name="username" placeholder="admin" required autofocus>
+        </label>
+
+        <label class="field">
+            <span>Mật khẩu</span>
+            <input type="password" name="password" placeholder="••••••••" required>
+        </label>
+
+        <button type="submit" class="button primary full-width">Đăng nhập</button>
+        <p class="muted small">Tài khoản mặc định sau khi khởi tạo: <code>admin</code> / <code>Admin@123</code>.</p>
+    </form>
+</section>
+{% endblock %}
