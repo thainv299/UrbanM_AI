@@ -18,6 +18,10 @@ document.addEventListener("DOMContentLoaded", () => {
         description: document.getElementById("description"),
         roiPoints: document.getElementById("roi_points"),
         noParkingPoints: document.getElementById("no_parking_points"),
+        roiFilePicker: document.getElementById("roi_file_picker"),
+        roiStatus: document.getElementById("roi_points_status"),
+        noParkingFilePicker: document.getElementById("no_parking_file_picker"),
+        noParkingStatus: document.getElementById("no_parking_points_status"),
         enableCongestion: document.getElementById("enable_congestion"),
         enableIllegalParking: document.getElementById("enable_illegal_parking"),
         enableLicensePlate: document.getElementById("enable_license_plate"),
@@ -34,14 +38,64 @@ document.addEventListener("DOMContentLoaded", () => {
         fields.name.value = camera?.name || "";
         fields.streamSource.value = camera?.stream_source || "";
         fields.description.value = camera?.description || "";
-        fields.roiPoints.value = camera?.roi_points ? JSON.stringify(camera.roi_points, null, 2) : "";
-        fields.noParkingPoints.value = camera?.no_parking_points ? JSON.stringify(camera.no_parking_points, null, 2) : "";
+        
+        fields.roiPoints.value = camera?.roi_points ? JSON.stringify(camera.roi_points) : "";
+        fields.roiFilePicker.value = "";
+        fields.roiStatus.textContent = camera?.roi_points ? "Đã có dữ liệu từ trước." : "Chưa có dữ liệu.";
+        
+        fields.noParkingPoints.value = camera?.no_parking_points ? JSON.stringify(camera.no_parking_points) : "";
+        fields.noParkingFilePicker.value = "";
+        fields.noParkingStatus.textContent = camera?.no_parking_points ? "Đã có dữ liệu từ trước." : "Chưa có dữ liệu.";
+
         fields.enableCongestion.checked = camera ? Boolean(camera.enable_congestion) : true;
         fields.enableIllegalParking.checked = camera ? Boolean(camera.enable_illegal_parking) : true;
         fields.enableLicensePlate.checked = camera ? Boolean(camera.enable_license_plate) : true;
         fields.isActive.checked = camera ? Boolean(camera.is_active) : true;
-        formTitle.textContent = camera ? `Cap nhat camera #${camera.id}` : "Them camera moi";
+        formTitle.textContent = camera ? `Cập nhật camera #${camera.id}` : "Thêm camera mới";
     }
+
+    function handleFileSelect(fileInput, hiddenInput, statusSpan) {
+        fileInput.addEventListener("change", (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                hiddenInput.value = "";
+                statusSpan.textContent = "Chưa có dữ liệu.";
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    let parsed = JSON.parse(e.target.result);
+                    
+                    // Support layout JSON format from main.py {"points": [...]}
+                    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && Array.isArray(parsed.points)) {
+                        parsed = parsed.points;
+                    }
+
+                    if (!Array.isArray(parsed) || parsed.length < 3) {
+                        throw new Error("Dữ liệu JSON phải là mảng tọa độ chứa ít nhất 3 điểm.");
+                    }
+                    hiddenInput.value = JSON.stringify(parsed);
+                    statusSpan.textContent = "Đã tải file thành công.";
+                    statusSpan.style.color = "var(--color-primary, teal)";
+                } catch (error) {
+                    fileInput.value = "";
+                    hiddenInput.value = "";
+                    statusSpan.textContent = "Lỗi file không đúng chuẩn JSON Polygon.";
+                    statusSpan.style.color = "var(--color-danger, red)";
+                }
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    if (fields.roiFilePicker && fields.roiPoints && fields.roiStatus) {
+        handleFileSelect(fields.roiFilePicker, fields.roiPoints, fields.roiStatus);
+    }
+    if (fields.noParkingFilePicker && fields.noParkingPoints && fields.noParkingStatus) {
+        handleFileSelect(fields.noParkingFilePicker, fields.noParkingPoints, fields.noParkingStatus);
+    }
+
 
     function formatDetection(camera) {
         return `
