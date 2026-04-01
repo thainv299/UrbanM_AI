@@ -63,15 +63,25 @@
                 <textarea id="description" name="description" rows="2" placeholder="Camera cổng chính, camera bãi đỗ..." ></textarea>
             </label>
 
-            <label class="field full-span">
-                <span>ROI polygon (JSON)</span>
-                <textarea id="roi_points" name="roi_points" rows="4" placeholder='[[100,80],[900,80],[900,520],[100,520]]'></textarea>
-            </label>
+            <div class="field full-span">
+                <span class="label-text">ROI polygon (tùy chọn)</span>
+                <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
+                    <input type="file" id="roi_file_picker" accept=".json" style="display: none;">
+                    <button type="button" class="button secondary" onclick="document.getElementById('roi_file_picker').click()">Chọn file .json</button>
+                    <span id="roi_points_status" class="muted">Chưa có dữ liệu.</span>
+                </div>
+                <input type="hidden" id="roi_points" name="roi_points">
+            </div>
 
-            <label class="field full-span">
-                <span>Vùng cấm đỗ (JSON)</span>
-                <textarea id="no_parking_points" name="no_parking_points" rows="4" placeholder='[[140,340],[860,340],[860,520],[140,520]]'></textarea>
-            </label>
+            <div class="field full-span">
+                <span class="label-text">Vùng cấm đỗ (tùy chọn)</span>
+                <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
+                    <input type="file" id="no_parking_file_picker" accept=".json" style="display: none;">
+                    <button type="button" class="button secondary" onclick="document.getElementById('no_parking_file_picker').click()">Chọn file .json</button>
+                    <span id="no_parking_points_status" class="muted">Chưa có dữ liệu.</span>
+                </div>
+                <input type="hidden" id="no_parking_points" name="no_parking_points">
+            </div>
 
             <label class="toggle-field">
                 <input type="checkbox" id="enable_congestion" name="enable_congestion" checked>

@@ -15,8 +15,58 @@ document.addEventListener("DOMContentLoaded", () => {
     const localPathInput = form?.querySelector('input[name="local_path"]');
     const featureCheckboxes = form ? Array.from(form.querySelectorAll('input[type="checkbox"][name^="enable_"]')) : [];
 
+    const testRoiFilePicker = document.getElementById("test_roi_file_picker");
+    const testRoiPoints = document.getElementById("test_roi_points");
+    const testRoiStatus = document.getElementById("test_roi_points_status");
+
+    const testNoParkingFilePicker = document.getElementById("test_no_parking_file_picker");
+    const testNoParkingPoints = document.getElementById("test_no_parking_points");
+    const testNoParkingStatus = document.getElementById("test_no_parking_points_status");
+
     if (!form || !uploadInput || !localPathInput) {
         return;
+    }
+
+    function handleFileSelect(fileInput, hiddenInput, statusSpan) {
+        fileInput.addEventListener("change", (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                hiddenInput.value = "";
+                statusSpan.textContent = "Nếu để trống sẽ dùng cấu hình camera.";
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    let parsed = JSON.parse(e.target.result);
+                    
+                    // Support layout JSON format from main.py {"points": [...]}
+                    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && Array.isArray(parsed.points)) {
+                        parsed = parsed.points;
+                    }
+
+                    if (!Array.isArray(parsed) || parsed.length < 3) {
+                        throw new Error("Dữ liệu JSON phải là mảng tọa độ chứa ít nhất 3 điểm.");
+                    }
+                    hiddenInput.value = JSON.stringify(parsed);
+                    statusSpan.textContent = "Đã tải file thành công.";
+                    statusSpan.style.color = "var(--color-primary, teal)";
+                } catch (error) {
+                    fileInput.value = "";
+                    hiddenInput.value = "";
+                    statusSpan.textContent = "Lỗi file không đúng chuẩn JSON Polygon.";
+                    statusSpan.style.color = "var(--color-danger, red)";
+                }
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    if (testRoiFilePicker && testRoiPoints && testRoiStatus) {
+        handleFileSelect(testRoiFilePicker, testRoiPoints, testRoiStatus);
+    }
+    if (testNoParkingFilePicker && testNoParkingPoints && testNoParkingStatus) {
+        handleFileSelect(testNoParkingFilePicker, testNoParkingPoints, testNoParkingStatus);
     }
 
     let pollingHandle = null;
