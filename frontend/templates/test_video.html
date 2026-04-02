@@ -38,12 +38,7 @@
 
             <label class="field">
                 <span>Upload video</span>
-                <input type="file" name="video_file" accept=".mp4,.avi,.mov,.mkv,.mpeg,.mpg">
-            </label>
-
-            <label class="field">
-                <span>Hoặc đường dẫn local</span>
-                <input type="text" name="local_path" placeholder="D:\\videos\\kiemtra.mp4">
+                <input type="file" name="video_file" accept=".mp4,.avi,.mov,.mkv,.mpeg,.mpg" required>
             </label>
 
             <label class="field">
@@ -142,29 +137,18 @@
                 </div>
             </div>
             <video id="input-video" class="result-video" controls preload="metadata"></video>
-            <p id="input-video-note" class="muted">Video bạn gửi sẽ xuất hiện ở đây với phần phân tích.</p>
-        </article>
-
-        <article class="viewer-card">
-            <div class="panel-header compact">
-                <div>
-                    <p class="eyebrow">Preview</p>
-                    <h3>Khung hình đang phân tích</h3>
-                </div>
-            </div>
-            <img id="live-preview" class="preview-frame" alt="Preview phân tích video">
-            <p id="preview-note" class="muted">Preview s? t? l?m m?i khi backend ?ang x? l? video.</p>
+            <p id="input-video-note" class="muted">Video bạn gửi sẽ xuất hiện ở đây.</p>
         </article>
 
         <article class="viewer-card viewer-result">
             <div class="panel-header compact">
                 <div>
-                    <p class="eyebrow">K?t qu?</p>
-                    <h3>Video c? overlay detect</h3>
+                    <p class="eyebrow">Kết quả phân tích</p>
+                    <h3>Stream trực tiếp từ backend</h3>
                 </div>
             </div>
-            <video id="result-video" class="result-video" controls preload="metadata"></video>
-            <p id="result-video-note" class="muted">Video kết quả sẽ xuất hiện sau khi job hoàn tất.</p>
+            <img id="stream-output" class="result-video" alt="Stream phân tích video" style="width:100%; background:#111; min-height:300px; object-fit:contain; border-radius:8px;">
+            <p id="stream-output-note" class="muted">Luồng phát trực tiếp sẽ hiển thị khi backend bắt đầu xử lý video.</p>
         </article>
     </div>
 
@@ -173,5 +157,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/test_video.js') }}"></script>
+<script src="{{ url_for('static', path='js/test_video.js') }}?v=3"></script>
 {% endblock %}

@@ -36,10 +36,12 @@ def preview_path_for_job(job_id: str) -> Path:
 
 def public_job(job: Dict[str, Any]) -> Dict[str, Any]:
     payload = dict(job)
+    # Loai bo latest_frame (bytes) de tranh loi UnicodeDecodeError khi FastAPI serialize JSON
+    payload.pop("latest_frame", None)
     output_filename = payload.get("output_filename")
     payload["result_url"] = f"/results/{output_filename}" if output_filename else None
     payload["input_video_url"] = f"/job-sources/{payload['id']}" if payload.get("source_video") else None
-    payload["preview_image_url"] = f"/job-previews/{payload['id']}.jpg"
+    payload["stream_url"] = f"/api/test-jobs/{payload['id']}/stream"
     payload["queue_position"] = get_queue_position(payload.get("id", ""))
     return payload
 
@@ -52,26 +54,31 @@ def run_detection_job(
     output_path = OUTPUTS_DIR / output_filename
 
     def handle_progress(progress: Dict[str, Any]) -> None:
+        # Kiem tra abort signal truoc khi tiep tuc xu ly
+        with job_lock:
+            current = jobs.get(job_id)
+            if current and current.get("status") == "aborted":
+                raise RuntimeError("Job da bi huy boi nguoi dung hoac server.")
+
         progress_payload = dict(progress)
         preview_jpeg = progress_payload.pop("preview_jpeg", None)
         if preview_jpeg:
-            preview_path_for_job(job_id).write_bytes(preview_jpeg)
+            with job_lock:
+                job = jobs.get(job_id)
+                if job is not None:
+                    job["latest_frame"] = preview_jpeg
 
         phase = progress.get("phase")
-        percent = progress.get("progress_percent")
         processed_frames = progress.get("processed_frames")
         total_frames = progress.get("source_total_frames")
 
         if phase == "loading_model":
             message = "Dang tai model YOLO..."
         elif phase == "finalizing_output":
-            message = "Dang hoan tat video ket qua..."
+            message = "Dang hoan tat..."
         elif processed_frames is not None:
             total_text = total_frames if total_frames else "?"
-            if percent is None:
-                message = f"Dang xu ly {processed_frames}/{total_text} frame..."
-            else:
-                message = f"Dang xu ly {processed_frames}/{total_text} frame ({percent:.1f}%)"
+            message = f"Dang xu ly {processed_frames}/{total_text} frame..."
         else:
             message = "Dang xu ly video..."
 

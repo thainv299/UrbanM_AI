@@ -187,7 +187,6 @@ def process_video(
 ) -> Dict[str, Any]:
     input_video_path = Path(input_path)
     output_video_path = Path(output_path)
-    output_video_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not input_video_path.exists():
         raise FileNotFoundError(f"Khong tim thay video dau vao: {input_video_path}")
@@ -222,16 +221,6 @@ def process_video(
     if roi_polygon is None:
         raise ValueError("ROI khong hop le.")
 
-    writer = cv2.VideoWriter(
-        str(output_video_path),
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        fps,
-        (frame_width, frame_height),
-    )
-    if not writer.isOpened():
-        capture.release()
-        raise RuntimeError("Khong the tao file video ket qua.")
-
     if progress_callback is not None:
         progress_callback(
             {
@@ -260,7 +249,8 @@ def process_video(
     frame_index = 0
     last_results = None
     started_at = time.time()
-    last_progress_emit = 0.0
+    frame_delay = 1.0 / fps  # Thoi gian giua cac frame theo FPS thuc cua video
+    last_frame_time = 0.0
     max_vehicle_count = 0
     max_people_count = 0
     max_license_plate_count = 0
@@ -425,29 +415,29 @@ def process_video(
                 (0, 255, 255),
                 2,
             )
-
-            writer.write(frame)
-
             if progress_callback is not None:
                 now = time.time()
-                if frame_index == 1 or now - last_progress_emit >= 1.0:
-                    progress_callback(
-                        {
-                            "phase": "running_detection",
-                            "processed_frames": frame_index,
-                            "source_total_frames": total_frames,
-                            "progress_percent": round((frame_index / total_frames) * 100, 2)
-                            if total_frames
-                            else None,
-                            "elapsed_seconds": round(now - started_at, 1),
-                            "latest_status": latest_status,
-                            "preview_jpeg": _encode_preview_frame(frame),
-                        }
-                    )
-                    last_progress_emit = now
+                # Dam bao toc do phat dung FPS cua video goc
+                elapsed_since_last = now - last_frame_time
+                if elapsed_since_last < frame_delay:
+                    time.sleep(frame_delay - elapsed_since_last)
+                last_frame_time = time.time()
+
+                progress_callback(
+                    {
+                        "phase": "running_detection",
+                        "processed_frames": frame_index,
+                        "source_total_frames": total_frames,
+                        "progress_percent": round((frame_index / total_frames) * 100, 2)
+                        if total_frames
+                        else None,
+                        "elapsed_seconds": round(time.time() - started_at, 1),
+                        "latest_status": latest_status,
+                        "preview_jpeg": _encode_preview_frame(frame),
+                    }
+                )
     finally:
         capture.release()
-        writer.release()
 
     processing_seconds = max(0.001, time.time() - started_at)
     parking_violation_ids = (
