@@ -38,12 +38,7 @@
 
             <label class="field">
                 <span>Upload video</span>
-                <input type="file" name="video_file" accept=".mp4,.avi,.mov,.mkv,.mpeg,.mpg">
-            </label>
-
-            <label class="field">
-                <span>Hoặc đường dẫn local</span>
-                <input type="text" name="local_path" placeholder="D:\\videos\\kiemtra.mp4">
+                <input type="file" name="video_file" accept=".mp4,.avi,.mov,.mkv,.mpeg,.mpg" required>
             </label>
 
             <label class="field">
@@ -173,5 +168,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/test_video.js') }}"></script>
+<script src="{{ url_for('static', path='js/test_video.js') }}?v=2"></script>
 {% endblock %}

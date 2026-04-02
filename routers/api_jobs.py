@@ -1,8 +1,9 @@
 import uuid
 import time
+import asyncio
 from pathlib import Path
 from fastapi import APIRouter, Request, Depends, UploadFile, HTTPException
-from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.responses import JSONResponse, FileResponse, Response, StreamingResponse
 from werkzeug.utils import secure_filename
 
 from core.config import executor, INPUTS_DIR, OUTPUTS_DIR, ALLOWED_VIDEO_EXTENSIONS
@@ -37,28 +38,29 @@ def serve_test_job_source(job_id: str, user=Depends(require_login)):
         raise HTTPException(status_code=404)
     return FileResponse(source_path)
 
-@router.get("/job-previews/{job_id}.jpg")
-def serve_test_job_preview(job_id: str, user=Depends(require_login)):
-    job = get_job(job_id)
-    if job is None:
-        raise HTTPException(status_code=404)
+async def stream_job(job_id: str):
+    while True:
+        job = get_job(job_id)
+        if not job:
+            break
+        
+        frame = job.get("latest_frame")
+        if frame:
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+        
+        status = job.get("status")
+        if status in ("completed", "failed"):
+            # Luong chay xong thi dung ket noi stream
+            break
+        
+        await asyncio.sleep(0.03)  # Gioi han khoang ~33 FPS de luong web muot ma
 
-    preview_path = preview_path_for_job(job_id)
-    if preview_path.exists():
-        return FileResponse(preview_path, media_type="image/jpeg", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
-
-    status_str = str(job.get("status", "queued"))
-    if status_str == "running":
-        title = "Dang phan tich video"
-    elif status_str == "completed":
-        title = "Da hoan tat xu ly"
-    elif status_str == "failed":
-        title = "Khong tao duoc preview"
-    else:
-        title = "Dang cho den luot xu ly"
-
-    detail = str(job.get("message", ""))
-    return Response(content=build_placeholder_frame(title, detail), media_type="image/jpeg", headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"})
+@router.get("/api/test-jobs/{job_id}/stream")
+def serve_test_job_stream(job_id: str):
+    return StreamingResponse(
+        stream_job(job_id), 
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
 
 
 @router.post("/api/test-jobs")
@@ -73,9 +75,12 @@ async def api_create_test_job(request: Request, user=Depends(require_login)):
             return json_error("Camera duoc chon khong ton tai.", 404)
 
     upload_file = form.get("video_file")
-    local_path_text = str(form.get("local_path", "")).strip()
+    
+    # Kiem tra duck-typing vi UploadFile co the den tu starlette.datastructures hoac fastapi.UploadFile 
+    # tuoc do gay loi isinstance
+    is_valid_file = upload_file is not None and hasattr(upload_file, "filename") and hasattr(upload_file, "read")
 
-    if isinstance(upload_file, UploadFile) and upload_file.filename:
+    if is_valid_file and upload_file.filename:
         extension = Path(upload_file.filename).suffix.lower()
         if extension not in ALLOWED_VIDEO_EXTENSIONS:
             return json_error("Dinh dang video khong duoc ho tro.", 400)
@@ -87,14 +92,8 @@ async def api_create_test_job(request: Request, user=Depends(require_login)):
                 if not chunk:
                     break
                 buffer.write(chunk)
-    elif local_path_text:
-        input_path = resolve_path(local_path_text)
-        if not input_path.exists():
-            return json_error("Duong dan video local khong ton tai.", 400)
-        if input_path.suffix.lower() not in ALLOWED_VIDEO_EXTENSIONS:
-            return json_error("Dinh dang video khong duoc ho tro.", 400)
     else:
-        return json_error("Hay chon file upload hoac nhap duong dan local.", 400)
+        return json_error("Hay chon file upload hop le.", 400)
 
     try:
         form_data = {k: v for k, v in form.multi_items()}

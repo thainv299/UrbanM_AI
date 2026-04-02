@@ -39,7 +39,7 @@ def public_job(job: Dict[str, Any]) -> Dict[str, Any]:
     output_filename = payload.get("output_filename")
     payload["result_url"] = f"/results/{output_filename}" if output_filename else None
     payload["input_video_url"] = f"/job-sources/{payload['id']}" if payload.get("source_video") else None
-    payload["preview_image_url"] = f"/job-previews/{payload['id']}.jpg"
+    payload["stream_url"] = f"/api/test-jobs/{payload['id']}/stream"
     payload["queue_position"] = get_queue_position(payload.get("id", ""))
     return payload
 
@@ -55,7 +55,10 @@ def run_detection_job(
         progress_payload = dict(progress)
         preview_jpeg = progress_payload.pop("preview_jpeg", None)
         if preview_jpeg:
-            preview_path_for_job(job_id).write_bytes(preview_jpeg)
+            with job_lock:
+                job = jobs.get(job_id)
+                if job is not None:
+                    job["latest_frame"] = preview_jpeg
 
         phase = progress.get("phase")
         percent = progress.get("progress_percent")

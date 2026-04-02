@@ -12,7 +12,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const resultSummary = document.getElementById("result-summary");
     const submitButton = document.getElementById("submit-test-job");
     const uploadInput = form?.querySelector('input[name="video_file"]');
-    const localPathInput = form?.querySelector('input[name="local_path"]');
     const featureCheckboxes = form ? Array.from(form.querySelectorAll('input[type="checkbox"][name^="enable_"]')) : [];
 
     const testRoiFilePicker = document.getElementById("test_roi_file_picker");
@@ -23,7 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const testNoParkingPoints = document.getElementById("test_no_parking_points");
     const testNoParkingStatus = document.getElementById("test_no_parking_points_status");
 
-    if (!form || !uploadInput || !localPathInput) {
+    if (!form || !uploadInput) {
         return;
     }
 
@@ -137,13 +136,6 @@ document.addEventListener("DOMContentLoaded", () => {
                         : "gray";
 
         const progress = job.progress || {};
-        const hasProgress = Number.isFinite(progress.processed_frames) || Number.isFinite(progress.progress_percent);
-        const percentText = Number.isFinite(progress.progress_percent)
-            ? `${progress.progress_percent.toFixed(1)}%`
-            : "Dang doi...";
-        const frameText = Number.isFinite(progress.processed_frames)
-            ? `${progress.processed_frames}/${progress.source_total_frames || "?"} frame`
-            : null;
         const queueText = job.status === "queued" && job.queue_position
             ? `Vi tri trong hang doi: ${job.queue_position}`
             : null;
@@ -155,7 +147,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 <h4>${job.message || "Dang doi trang thai"}</h4>
                 <p class="muted">Job ID: ${job.id || "-"}</p>
                 ${queueText ? `<p class="muted">${queueText}</p>` : ""}
-                ${hasProgress ? `<p class="muted">Tien do: ${frameText ? `${frameText} - ` : ""}${percentText}</p>` : ""}
                 ${latestText ? `<p class="muted">Trang thai detect: ${latestText}</p>` : ""}
                 ${job.error ? `<p class="muted">${job.error}</p>` : ""}
             </article>
@@ -230,47 +221,10 @@ document.addEventListener("DOMContentLoaded", () => {
         revokeInputPreviewUrl();
         currentInputObjectUrl = URL.createObjectURL(file);
         setVideoSource(inputVideo, currentInputObjectUrl);
-        inputVideoNote.textContent = `Dang xem truoc video moi: ${file.name}. Khi ban chay job, video nay se thay the video cu.`;
+        inputVideoNote.textContent = `Dang xem truoc video moi: ${file.name}. Khi ban chay job, video nay se thay ty video cu.`;
     }
 
-    function showPendingLocalSource(pathText) {
-        viewerPanel.hidden = false;
-        revokeInputPreviewUrl();
-        clearVideo(inputVideo);
-        inputVideoNote.textContent = `Da nhap video moi: ${pathText}. Trinh duyet khong mo truc tiep duong dan local, nhung sau khi gui job web se thay the bang video nay.`;
-    }
-
-    function refreshPreview(job) {
-        if (!job.preview_image_url) {
-            return;
-        }
-        livePreview.dataset.jobId = job.id || "";
-        livePreview.src = `${job.preview_image_url}?t=${Date.now()}`;
-
-        const progress = job.progress || {};
-        if (job.status === "queued") {
-            previewNote.textContent = job.queue_position
-                ? `Job dang nam trong hang doi, vi tri ${job.queue_position}. Preview se xuat hien khi backend bat dau phan tich.`
-                : "Job dang cho den luot xu ly. Preview se xuat hien khi backend bat dau phan tich.";
-            return;
-        }
-        if (job.status === "running") {
-            const processedFrames = Number.isFinite(progress.processed_frames) ? progress.processed_frames : "?";
-            const totalFrames = Number.isFinite(progress.source_total_frames) ? progress.source_total_frames : "?";
-            const percentText = Number.isFinite(progress.progress_percent)
-                ? `${progress.progress_percent.toFixed(1)}%`
-                : "Dang cap nhat";
-            previewNote.textContent = `Preview dang cap nhat tu frame ${processedFrames}/${totalFrames}. Tien do hien tai: ${percentText}.`;
-            return;
-        }
-        if (job.status === "completed") {
-            previewNote.textContent = "Preview dang hien frame phan tich cuoi cung. Video ket qua da san sang de xem lai.";
-            return;
-        }
-        if (job.status === "failed") {
-            previewNote.textContent = job.error || "Job that bai, khong the tiep tuc tao preview phan tich.";
-        }
-    }
+    // Removed refreshPreview as MJPEG stream updates itself
 
     function prepareViewer(job) {
         viewerPanel.hidden = false;
@@ -284,11 +238,17 @@ document.addEventListener("DOMContentLoaded", () => {
             inputVideoNote.textContent = "Khong tim thay video nguon cho job nay.";
         }
 
-        refreshPreview(job);
+        if (job.stream_url && livePreview.dataset.jobId !== job.id) {
+            livePreview.dataset.jobId = job.id || "";
+            livePreview.src = job.stream_url;
+            previewNote.textContent = "Dang phat truc tiep stream phan tich thoi gian thuc...";
+        }
 
         if (job.status !== "completed") {
             clearVideo(resultVideo);
-            resultVideoNote.textContent = "Video ket qua se xuat hien sau khi backend xu ly xong.";
+            resultVideoNote.textContent = "Qua trinh danh gia hoan tat xong hoan toan moi hien thi tom tat.";
+        } else {
+            previewNote.textContent = "Luong stream da xong.";
         }
     }
 
@@ -309,10 +269,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
             if (job.status === "completed") {
-                if (job.result_url) {
-                    setVideoSource(resultVideo, job.result_url);
+                if (job.input_video_url) {
+                    setVideoSource(resultVideo, job.input_video_url);
                 }
-                resultVideoNote.textContent = "Video ket qua da san sang. Ban co the phat truc tiep tren web.";
+                resultVideoNote.textContent = "Video goc.";
                 renderSummary(job.summary || {});
                 submitButton.disabled = false;
                 stopPolling();
@@ -329,27 +289,12 @@ document.addEventListener("DOMContentLoaded", () => {
         stopPolling();
         submitButton.disabled = false;
         if (file) {
-            localPathInput.value = "";
             resetOutputView("Da chon video moi. Video ket qua va preview cu da duoc thay the, san sang cho job moi.");
             showSelectedUpload(file);
-        } else if (!localPathInput.value.trim()) {
+        } else {
             revokeInputPreviewUrl();
             clearVideo(inputVideo);
             inputVideoNote.textContent = "Hay chon video de bat dau job moi.";
-        }
-    });
-
-    localPathInput.addEventListener("input", () => {
-        const pathText = localPathInput.value.trim();
-        stopPolling();
-        submitButton.disabled = false;
-        if (pathText) {
-            uploadInput.value = "";
-            resetOutputView("Da nhap duong dan video moi. Video ket qua va preview cu da duoc thay the, san sang cho job moi.");
-            showPendingLocalSource(pathText);
-        } else if (!(uploadInput.files && uploadInput.files[0])) {
-            clearVideo(inputVideo);
-            inputVideoNote.textContent = "Hay nhap duong dan local hoac upload video de bat dau job moi.";
         }
     });
 
@@ -363,18 +308,13 @@ document.addEventListener("DOMContentLoaded", () => {
             formData.set(checkbox.name, checkbox.checked ? "true" : "false");
         });
         const hasFile = Boolean(formData.get("video_file") && formData.get("video_file").name);
-        const hasLocalPath = Boolean((formData.get("local_path") || "").trim());
-        if (!hasFile && !hasLocalPath) {
-            window.portalApi.showNotice(feedback, "Hay chon file upload hoac nhap duong dan local.", "error");
+        if (!hasFile) {
+            window.portalApi.showNotice(feedback, "Hay chon file upload.", "error");
             return;
         }
 
         resetOutputView("Job dang duoc tao cho video moi. Web se thay the toan bo preview va ket qua cu bang job moi nay.");
-        if (!hasFile) {
-            clearVideo(inputVideo);
-            inputVideoNote.textContent = "Dang gui video local moi len backend. Video nguon se hien lai ngay khi job duoc tao.";
-        }
-
+        
         submitButton.disabled = true;
         renderStatus({ status: "queued", message: "Dang gui yeu cau len backend..." }, "warning");
 
@@ -385,7 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
             renderStatus(job, pickTone(job.status));
             renderPendingSummary("Backend dang xu ly video moi. Preview phan tich se duoc lam moi dinh ky ngay tai trang nay.");
 
-            pollingHandle = setInterval(() => pollJob(job.id), 2000);
+            pollingHandle = setInterval(() => pollJob(job.id), 3000);
             pollJob(job.id);
         } catch (error) {
             submitButton.disabled = false;
