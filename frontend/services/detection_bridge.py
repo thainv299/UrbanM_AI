@@ -249,7 +249,8 @@ def process_video(
     frame_index = 0
     last_results = None
     started_at = time.time()
-    last_progress_emit = 0.0
+    frame_delay = 1.0 / fps  # Thoi gian giua cac frame theo FPS thuc cua video
+    last_frame_time = 0.0
     max_vehicle_count = 0
     max_people_count = 0
     max_license_plate_count = 0
@@ -416,6 +417,12 @@ def process_video(
             )
             if progress_callback is not None:
                 now = time.time()
+                # Dam bao toc do phat dung FPS cua video goc
+                elapsed_since_last = now - last_frame_time
+                if elapsed_since_last < frame_delay:
+                    time.sleep(frame_delay - elapsed_since_last)
+                last_frame_time = time.time()
+
                 progress_callback(
                     {
                         "phase": "running_detection",
@@ -424,7 +431,7 @@ def process_video(
                         "progress_percent": round((frame_index / total_frames) * 100, 2)
                         if total_frames
                         else None,
-                        "elapsed_seconds": round(now - started_at, 1),
+                        "elapsed_seconds": round(time.time() - started_at, 1),
                         "latest_status": latest_status,
                         "preview_jpeg": _encode_preview_frame(frame),
                     }

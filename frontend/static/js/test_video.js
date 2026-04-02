@@ -5,10 +5,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const viewerPanel = document.getElementById("viewer-panel");
     const inputVideo = document.getElementById("input-video");
     const inputVideoNote = document.getElementById("input-video-note");
-    const livePreview = document.getElementById("live-preview");
-    const previewNote = document.getElementById("preview-note");
-    const resultVideo = document.getElementById("result-video");
-    const resultVideoNote = document.getElementById("result-video-note");
+    const streamOutput = document.getElementById("stream-output");
+    const streamOutputNote = document.getElementById("stream-output-note");
     const resultSummary = document.getElementById("result-summary");
     const submitButton = document.getElementById("submit-test-job");
     const uploadInput = form?.querySelector('input[name="video_file"]');
@@ -108,8 +106,24 @@ document.addEventListener("DOMContentLoaded", () => {
         video.load();
     }
 
+    function clearStream() {
+        if (streamOutput) {
+            streamOutput.removeAttribute("src");
+            delete streamOutput.dataset.jobId;
+        }
+    }
+
+    function startStream(jobId, streamUrl) {
+        if (!streamOutput || !streamUrl) {
+            return;
+        }
+        streamOutput.dataset.jobId = jobId;
+        streamOutput.src = streamUrl;
+        streamOutputNote.textContent = "Dang phat truc tiep stream phan tich thoi gian thuc...";
+    }
+
     function pickTone(status) {
-        if (status === "failed") {
+        if (status === "failed" || status === "aborted") {
             return "error";
         }
         if (status === "completed") {
@@ -205,11 +219,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function resetOutputView(message) {
         viewerPanel.hidden = false;
-        clearVideo(resultVideo);
-        livePreview.removeAttribute("src");
-        delete livePreview.dataset.jobId;
-        previewNote.textContent = "Preview cu da duoc xoa. Preview moi se hien khi backend bat dau xu ly video moi.";
-        resultVideoNote.textContent = "Video ket qua cu da duoc thay the. Ket qua moi se xuat hien sau khi job tiep theo hoan tat.";
+        clearStream();
+        streamOutputNote.textContent = "Luong stream se bat dau khi backend xu ly video.";
         renderPendingSummary(message);
     }
 
@@ -224,31 +235,27 @@ document.addEventListener("DOMContentLoaded", () => {
         inputVideoNote.textContent = `Dang xem truoc video moi: ${file.name}. Khi ban chay job, video nay se thay ty video cu.`;
     }
 
-    // Removed refreshPreview as MJPEG stream updates itself
-
     function prepareViewer(job) {
         viewerPanel.hidden = false;
 
         if (job.input_video_url) {
             revokeInputPreviewUrl();
             setVideoSource(inputVideo, job.input_video_url);
-            inputVideoNote.textContent = "Video nguon cua job hien tai da thay the video cu tren giao dien.";
+            inputVideoNote.textContent = "Video nguon cua job hien tai.";
         } else {
             clearVideo(inputVideo);
             inputVideoNote.textContent = "Khong tim thay video nguon cho job nay.";
         }
 
-        if (job.stream_url && livePreview.dataset.jobId !== job.id) {
-            livePreview.dataset.jobId = job.id || "";
-            livePreview.src = job.stream_url;
-            previewNote.textContent = "Dang phat truc tiep stream phan tich thoi gian thuc...";
+        // Gan stream vao o ket qua lon
+        if (job.stream_url && streamOutput.dataset.jobId !== job.id) {
+            startStream(job.id, job.stream_url);
         }
 
-        if (job.status !== "completed") {
-            clearVideo(resultVideo);
-            resultVideoNote.textContent = "Qua trinh danh gia hoan tat xong hoan toan moi hien thi tom tat.";
-        } else {
-            previewNote.textContent = "Luong stream da xong.";
+        if (job.status === "completed") {
+            streamOutputNote.textContent = "Luong stream da hoan tat. Xem tom tat ben duoi.";
+        } else if (job.status === "failed" || job.status === "aborted") {
+            streamOutputNote.textContent = job.error || "Job da bi huy hoac that bai.";
         }
     }
 
@@ -262,17 +269,13 @@ document.addEventListener("DOMContentLoaded", () => {
             if (job.status === "queued" || job.status === "running") {
                 return;
             }
-            if (job.status === "failed") {
+            if (job.status === "failed" || job.status === "aborted") {
                 submitButton.disabled = false;
-                resultVideoNote.textContent = job.error || "Xu ly video that bai.";
+                streamOutputNote.textContent = job.error || "Xu ly video that bai.";
                 stopPolling();
                 return;
             }
             if (job.status === "completed") {
-                if (job.input_video_url) {
-                    setVideoSource(resultVideo, job.input_video_url);
-                }
-                resultVideoNote.textContent = "Video goc.";
                 renderSummary(job.summary || {});
                 submitButton.disabled = false;
                 stopPolling();
@@ -289,7 +292,7 @@ document.addEventListener("DOMContentLoaded", () => {
         stopPolling();
         submitButton.disabled = false;
         if (file) {
-            resetOutputView("Da chon video moi. Video ket qua va preview cu da duoc thay the, san sang cho job moi.");
+            resetOutputView("Da chon video moi. San sang cho job moi.");
             showSelectedUpload(file);
         } else {
             revokeInputPreviewUrl();
@@ -302,6 +305,7 @@ document.addEventListener("DOMContentLoaded", () => {
         event.preventDefault();
         window.portalApi.showNotice(feedback, "", "info");
         stopPolling();
+        clearStream();
 
         const formData = new FormData(form);
         featureCheckboxes.forEach((checkbox) => {
@@ -313,7 +317,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        resetOutputView("Job dang duoc tao cho video moi. Web se thay the toan bo preview va ket qua cu bang job moi nay.");
+        resetOutputView("Job dang duoc tao. Stream se bat dau ngay khi backend xu ly.");
         
         submitButton.disabled = true;
         renderStatus({ status: "queued", message: "Dang gui yeu cau len backend..." }, "warning");
@@ -323,7 +327,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const job = data.job;
             prepareViewer(job);
             renderStatus(job, pickTone(job.status));
-            renderPendingSummary("Backend dang xu ly video moi. Preview phan tich se duoc lam moi dinh ky ngay tai trang nay.");
+            renderPendingSummary("Backend dang xu ly video. Luong stream se cap nhat truc tiep.");
 
             pollingHandle = setInterval(() => pollJob(job.id), 3000);
             pollJob(job.id);

@@ -14,10 +14,9 @@ from services.job_manager import (
     set_job,
     get_job,
     public_job,
-    preview_path_for_job,
     run_detection_job
 )
-from services.camera_service import build_placeholder_frame
+
 
 router = APIRouter()
 
@@ -39,21 +38,29 @@ def serve_test_job_source(job_id: str, user=Depends(require_login)):
     return FileResponse(source_path)
 
 async def stream_job(job_id: str):
-    while True:
+    """MJPEG stream generator. Khi client ngat ket noi, finally block se abort job."""
+    try:
+        while True:
+            job = get_job(job_id)
+            if not job:
+                break
+            
+            frame = job.get("latest_frame")
+            if frame:
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+            
+            status = job.get("status")
+            if status in ("completed", "failed", "aborted"):
+                break
+            
+            await asyncio.sleep(0.03)
+    except (asyncio.CancelledError, GeneratorExit):
+        pass
+    finally:
+        # Khi client ngat ket noi (F5, tat tab), abort job dang chay
         job = get_job(job_id)
-        if not job:
-            break
-        
-        frame = job.get("latest_frame")
-        if frame:
-            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-        
-        status = job.get("status")
-        if status in ("completed", "failed"):
-            # Luong chay xong thi dung ket noi stream
-            break
-        
-        await asyncio.sleep(0.03)  # Gioi han khoang ~33 FPS de luong web muot ma
+        if job and job.get("status") in ("queued", "running"):
+            set_job(job_id, status="aborted", message="Job da bi huy do mat ket noi stream.")
 
 @router.get("/api/test-jobs/{job_id}/stream")
 def serve_test_job_stream(job_id: str):
