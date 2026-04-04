@@ -6,17 +6,27 @@ from datetime import datetime
 class ALPRLogger:
     def __init__(self, disappear_threshold=1800):
         self.logs_dir = "logs"
-        self.plates_dir = os.path.join(self.logs_dir, "plates")
+        self.plates_base_dir = os.path.join(self.logs_dir, "plates")
         self.csv_path = os.path.join(self.logs_dir, "ALPR_log.csv")
         self.disappear_threshold = disappear_threshold
         self.plate_sessions = {}
         
-        os.makedirs(self.plates_dir, exist_ok=True)
+        os.makedirs(self.plates_base_dir, exist_ok=True)
         
         if not os.path.exists(self.csv_path):
             with open(self.csv_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow(["Time", "Frame", "Plate", "Full_Frame_Image_Path"])
+
+    def _get_daily_plates_dir(self, now):
+        daily_dir = os.path.join(
+            self.plates_base_dir,
+            now.strftime("%Y"),   
+            now.strftime("%m"),   
+            now.strftime("%d")    
+        )
+        os.makedirs(daily_dir, exist_ok=True)
+        return daily_dir
 
     def process_plate(self, plate_text, current_frame, plate_img, full_frame, plate_coords):
         is_new_session = False
@@ -35,9 +45,12 @@ class ALPRLogger:
             self._save_log(plate_text, current_frame, full_frame, plate_coords)
             
     def _save_log(self, plate_text, current_frame, full_frame, plate_coords):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        img_name = f"{timestamp}_{plate_text}_evidence.jpg"
-        img_path = os.path.join(self.plates_dir, img_name)
+        now = datetime.now()
+        daily_dir = self._get_daily_plates_dir(now)
+        
+        time_str = now.strftime("%H-%M-%S")
+        img_name = f"{plate_text}_{time_str}.jpg"
+        img_path = os.path.join(daily_dir, img_name)
         
         # Make a copy of full_frame to draw on
         evidence_frame = full_frame.copy()
@@ -46,10 +59,8 @@ class ALPRLogger:
         x1, y1, x2, y2 = plate_coords
         cv2.rectangle(evidence_frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
         
-        # Save image
         cv2.imwrite(img_path, evidence_frame)
-        
-        # Append object to csv log
+    
         with open(self.csv_path, 'a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), current_frame, plate_text, img_path])
+            writer.writerow([now.strftime("%Y-%m-%d %H:%M:%S"), current_frame, plate_text, img_path])
