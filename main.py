@@ -170,7 +170,11 @@ class App:
             if event == cv2.EVENT_LBUTTONDOWN: points.append((x, y))
             elif event == cv2.EVENT_RBUTTONDOWN: points.clear()
         clone = frame.copy()
-        cv2.namedWindow(window_name)
+        h, w = frame.shape[:2]
+        disp_w = min(w, 1280)
+        disp_h = int(h * (disp_w / w))
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(window_name, disp_w, disp_h)
         cv2.setMouseCallback(window_name, mouse)
         while True:
             temp = clone.copy()
@@ -228,6 +232,14 @@ class App:
             ideal_frame_time = 1.0 / video_fps
 
             self.parking_manager.setup_detection(video_fps)
+
+            # Initialize resizable window to prevent overflow
+            cv2.namedWindow("Vehicle Detection", cv2.WINDOW_NORMAL)
+            orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            disp_w = min(orig_w, 1280)
+            disp_h = int(orig_h * (disp_w / orig_w)) if orig_w > 0 else 720
+            cv2.resizeWindow("Vehicle Detection", disp_w, disp_h)
 
             while cap.isOpened():
                 ret, frame = cap.read()
