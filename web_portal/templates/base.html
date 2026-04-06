@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="CityVision AI — Hệ thống quản lý giao thông thông minh ứng dụng trí tuệ nhân tạo">
+    <title>{% block title %}CityVision AI Portal{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    {% block head %}{% endblock %}
+</head>
+
+{% set page_content %}{% block content %}{% endblock %}{% endset %}
+
+<body class="portal-body {% if current_user %}portal-authenticated{% else %}portal-public{% endif %}"
+    data-page="{{ page | default('') }}"
+    {% if current_user %}
+    data-uid="{{ current_user['id'] }}"
+    data-uname="{{ current_user['username'] }}"
+    data-ufull="{{ current_user['full_name'] }}"
+    data-urole="{{ current_user['role'] }}"
+    data-uactive="{{ '1' if current_user['is_active'] else '0' }}"
+    {% endif %}
+>
+
+    {% if current_user %}
+    <div class="portal-shell">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="brand-block">
+                <p class="eyebrow">Traffic AI</p>
+                <h1>CityVision</h1>
+                <p class="brand-copy">Hệ thống giám sát & quản lý giao thông thông minh ứng dụng AI.</p>
+            </div>
+
+            <nav class="nav-links" aria-label="Điều hướng chính">
+                <span class="nav-label">Tổng quan</span>
+                <a id="nav-dashboard" class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard.dashboard_page') }}">
+                    <span class="nav-icon">📊</span> Bảng điều khiển
+                </a>
+
+                <span class="nav-label" style="margin-top: 8px;">Quản lý</span>
+                {% if current_user.role == 'admin' %}
+                <a id="nav-users" class="nav-link {% if page == 'users' %}active{% endif %}" href="{{ url_for('users.users_page') }}">
+                    <span class="nav-icon">👥</span> Người dùng
+                </a>
+                {% endif %}
+                <a id="nav-cameras" class="nav-link {% if page == 'cameras' %}active{% endif %}" href="{{ url_for('cameras.cameras_page') }}">
+                    <span class="nav-icon">📷</span> Camera
+                </a>
+
+                <span class="nav-label" style="margin-top: 8px;">Phân tích</span>
+                <a id="nav-test-video" class="nav-link {% if page == 'test-video' %}active{% endif %}" href="{{ url_for('test_video.test_video_page') }}">
+                    <span class="nav-icon">📹</span> Kiểm tra Video
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <div class="user-avatar" aria-hidden="true">
+                        {{ current_user.full_name[0] | upper if current_user.full_name else 'U' }}
+                    </div>
+                    <div class="user-info">
+                        <p class="name">{{ current_user.full_name }}</p>
+                        <p class="role-badge">{{ current_user.role }}</p>
+                    </div>
+                </div>
+                <form method="post" action="{{ url_for('auth.logout') }}">
+                    <button type="submit" id="btn-logout" class="button secondary full-width sm">
+                        <span>🚪</span> Đăng xuất
+                    </button>
+                </form>
+            </div>
+        </aside>
+
+        <!-- Main content -->
+        <div class="content-area">
+            <header class="main-header">
+                <nav class="breadcrumb" aria-label="Breadcrumb">
+                    <span class="bc-root">Portal</span>
+                    <span class="bc-sep">/</span>
+                    <span class="bc-current">{{ page | capitalize if page else 'Home' }}</span>
+                </nav>
+                <div class="header-actions">
+                    <span class="badge success">
+                        <span class="dot"></span>
+                        Hệ thống Trực tuyến
+                    </span>
+                </div>
+            </header>
+
+            <div class="page-content">
+                {{ page_content }}
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <main class="public-layout">
+        {{ page_content }}
+    </main>
+    {% endif %}
+
+    <script>
+        (function () {
+            var b = document.body;
+            var uid  = b.getAttribute('data-uid');
+            var uname= b.getAttribute('data-uname');
+            var ufull= b.getAttribute('data-ufull');
+            var urole= b.getAttribute('data-urole');
+            var uact = b.getAttribute('data-uactive');
+            window.portalContext = {
+                currentUser: uid ? {
+                    id: parseInt(uid, 10),
+                    username: uname,
+                    full_name: ufull,
+                    role: urole,
+                    is_active: uact === '1'
+                } : null,
+                page: b.getAttribute('data-page') || ''
+            };
+        })();
+    </script>
+    <script src="{{ url_for('static', filename='js/common.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

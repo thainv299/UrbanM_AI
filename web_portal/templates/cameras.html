@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Camera | CityVision AI Portal{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Cấu hình Thiết bị</p>
+        <h2 class="page-title">Quản lý Hệ thống Camera</h2>
+        <p class="muted">Khai báo nguồn video, thiết lập vùng nhận diện (ROI) và cấu hình các tính năng phân tích AI.</p>
+    </div>
+</div>
+
+<div class="split-layout two-columns">
+    <!-- Camera list -->
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Dữ liệu</p>
+                <h3>Danh sách Camera</h3>
+            </div>
+            <button type="button" class="button secondary sm" id="cameras-refresh">🔄 Làm mới</button>
+        </div>
+        <div id="cameras-feedback"></div>
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Tên Camera</th>
+                        <th>Nguồn Video</th>
+                        <th>Tính năng AI</th>
+                        <th>Trạng thái</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="cameras-table-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Add / Edit form -->
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Thiết lập</p>
+                <h3 id="camera-form-title">Thêm Camera Mới</h3>
+            </div>
+        </div>
+
+        <form id="camera-form" style="display: grid; gap: 16px;">
+            <input type="hidden" id="camera_id" name="camera_id">
+
+            <label class="field">
+                <span>Tên Camera</span>
+                <input type="text" id="camera_name" name="name" placeholder="VD: Camera Cổng Chính" required>
+            </label>
+
+            <label class="field">
+                <span>Nguồn Video (RTSP / File)</span>
+                <input type="text" id="stream_source" name="stream_source" placeholder="0, rtsp://..., hoặc đường dẫn file">
+            </label>
+
+            <label class="field">
+                <span>Mô tả chi tiết</span>
+                <textarea id="description" name="description" rows="2" placeholder="Vị trí lắp đặt, ghi chú thêm..."></textarea>
+            </label>
+
+            <label class="field">
+                <span>Vùng nhận diện ROI (JSON)</span>
+                <textarea id="roi_points" name="roi_points" rows="2" style="font-family: var(--font-mono); font-size: 0.82rem;" placeholder='[[100,80],[900,80],[900,520],[100,520]]'></textarea>
+            </label>
+
+            <label class="field">
+                <span>Vùng cấm đỗ xe (JSON)</span>
+                <textarea id="no_parking_points" name="no_parking_points" rows="2" style="font-family: var(--font-mono); font-size: 0.82rem;" placeholder='[[140,340],[860,340],[860,520],[140,520]]'></textarea>
+            </label>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <label class="toggle-field">
+                    <input type="checkbox" id="enable_congestion" name="enable_congestion" checked>
+                    <span>Phát hiện Tắc nghẽn</span>
+                </label>
+                <label class="toggle-field">
+                    <input type="checkbox" id="enable_illegal_parking" name="enable_illegal_parking" checked>
+                    <span>Phát hiện Đỗ xe sai</span>
+                </label>
+                <label class="toggle-field">
+                    <input type="checkbox" id="enable_license_plate" name="enable_license_plate" checked>
+                    <span>Nhận diện Biển số</span>
+                </label>
+                <label class="toggle-field">
+                    <input type="checkbox" id="camera_is_active" name="is_active" checked>
+                    <span>Kích hoạt Camera</span>
+                </label>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 6px;">
+                <button type="submit" class="button primary" id="camera-form-submit">Lưu Cấu hình</button>
+                <button type="button" class="button secondary" id="camera-form-reset">Hủy bỏ</button>
+            </div>
+        </form>
+    </section>
+</div>
+
+<!-- Camera preview -->
+<section class="panel margin-top">
+    <div class="panel-header">
+        <div>
+            <p class="eyebrow">Giám sát Trực quan</p>
+            <h3>Xem trước & Điều khiển Nhanh</h3>
+        </div>
+    </div>
+    <div id="camera-preview-grid" class="camera-preview-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px;">
+        <div class="empty-state">
+            <span class="empty-icon">📷</span>
+            <p class="muted">Chưa có camera nào để hiển thị preview.</p>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/cameras.js') }}"></script>
+{% endblock %}

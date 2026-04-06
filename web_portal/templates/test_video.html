@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Kiểm tra Video | CityVision AI Portal{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Phân tích Dữ liệu</p>
+        <h2 class="page-title">Kiểm tra Video với AI</h2>
+        <p class="muted">Tải lên video hoặc cung cấp đường dẫn tệp tin để chạy các thuật toán nhận diện tắc nghẽn và vi
+            phạm.</p>
+    </div>
+</div>
+
+<div class="split-layout two-columns">
+    <!-- Config form -->
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Đầu vào</p>
+                <h3>Cấu hình Tiến trình</h3>
+            </div>
+        </div>
+
+        <form id="test-video-form" enctype="multipart/form-data" style="display: grid; gap: 16px;">
+            <label class="field">
+                <span>Chọn Cấu hình Camera (Tùy chọn)</span>
+                <select name="camera_id" id="camera_id_select">
+                    <option value="">-- Không sử dụng cấu hình --</option>
+                    {% for camera in cameras %}
+                    <option value="{{ camera.id }}">{{ camera.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label class="field">
+                <span>Đường dẫn Model YOLO</span>
+                <input type="text" name="model_path" value="{{ default_model_path }}"
+                    style="font-family: var(--font-mono); font-size: 0.82rem;">
+            </label>
+
+            <label class="field">
+                <span>Tải lên Tệp Video</span>
+                <input type="file" name="video_file" accept=".mp4,.avi,.mov,.mkv,.mpeg,.mpg">
+            </label>
+
+            <label class="field">
+                <span>Hoặc Đường dẫn cục bộ (Local)</span>
+                <input type="text" name="local_path" placeholder="D:\Data\video_sample.mp4">
+            </label>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <label class="field">
+                    <span>Ngưỡng Tin cậy (Confidence)</span>
+                    <input type="number" name="confidence_threshold" min="0.1" max="1" step="0.01" value="0.32">
+                </label>
+                <label class="field">
+                    <span>Thời gian dừng Vi phạm (s)</span>
+                    <input type="number" name="stop_seconds" min="1" step="1" value="30">
+                </label>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <label class="toggle-field">
+                    <input type="checkbox" name="enable_congestion" checked>
+                    <span>Phát hiện Tắc nghẽn</span>
+                </label>
+                <label class="toggle-field">
+                    <input type="checkbox" name="enable_illegal_parking" checked>
+                    <span>Phát hiện Đỗ xe sai</span>
+                </label>
+                <label class="toggle-field" style="grid-column: 1 / -1;">
+                    <input type="checkbox" name="enable_license_plate" checked>
+                    <span>Nhận diện Biển số xe</span>
+                </label>
+            </div>
+
+            <label class="field">
+                <span>Vùng nhận diện ROI (JSON, tùy chọn)</span>
+                <textarea name="roi_points" rows="2" style="font-family: var(--font-mono); font-size: 0.82rem;"
+                    placeholder="Mặc định dùng toàn bộ khung hình"></textarea>
+            </label>
+
+            <label class="field">
+                <span>Vùng cấm đỗ xe — No Parking (JSON, tùy chọn)</span>
+                <textarea name="no_parking_points" rows="2" style="font-family: var(--font-mono); font-size: 0.82rem;"
+                    placeholder='VD: [[140,340],[860,340],[860,520],[140,520]]'></textarea>
+            </label>
+
+
+            <button type="submit" class="button primary" id="submit-test-job" style="margin-top: 4px;">
+                🚀 Bắt đầu Phân tích
+            </button>
+        </form>
+    </section>
+
+    <!-- Job status -->
+    <section class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Trạng thái</p>
+                <h3>Tiến độ Xử lý</h3>
+            </div>
+        </div>
+        <div id="test-job-feedback"></div>
+        <div id="job-status-panel">
+            <div class="empty-state">
+                <span class="empty-icon">📹</span>
+                <p class="muted">Chưa có tiến trình nào đang chạy.</p>
+                <p class="muted tiny">Kết quả sẽ hiển thị tại đây sau khi bạn nhấn bắt đầu.</p>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Result viewer -->
+<section id="viewer-panel" class="panel margin-top" hidden>
+    <div class="panel-header">
+        <div>
+            <p class="eyebrow">Kết quả Trực quan</p>
+            <h3>Giám sát Tiến trình & Đầu ra</h3>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+        <article class="panel" style="padding: 20px;">
+            <p class="eyebrow" style="margin-bottom: 12px;">Video Nguồn</p>
+            <video id="input-video" class="result-video" controls preload="metadata"></video>
+            <p id="input-video-note" class="muted small" style="margin-top: 10px;"></p>
+        </article>
+
+        <article class="panel" style="padding: 20px;">
+            <p class="eyebrow" style="margin-bottom: 12px;">Preview Phân tích (Live)</p>
+            <img id="live-preview" class="preview-frame" alt="AI Analysis Preview">
+            <p id="preview-note" class="muted small" style="margin-top: 10px;"></p>
+        </article>
+    </div>
+
+    <article class="panel" style="padding: 24px;">
+        <p class="eyebrow" style="margin-bottom: 12px;">Video Kết quả (Final)</p>
+        <video id="result-video" class="result-video" controls preload="metadata"></video>
+        <p id="result-video-note" class="muted small" style="margin-top: 10px;"></p>
+    </article>
+
+    <div id="result-summary"
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 24px;">
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/test_video.js') }}"></script>
+{% endblock %}

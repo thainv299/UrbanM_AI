@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Biển Số Phát Hiện | CityVision AI Portal{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Dữ liệu Biển Số</p>
+        <h2 class="page-title">Biển Số Xe Phát Hiện</h2>
+        <p class="muted">Danh sách các biển số xe được OCR đọc từ video phân tích</p>
+    </div>
+</div>
+
+<section class="panel">
+    <div class="panel-header">
+        <div>
+            <p class="eyebrow">Framing</p>
+            <h3>Lọc Ngày</h3>
+        </div>
+    </div>
+    <div style="display: grid; grid-template-columns: auto auto 1fr; gap: 12px; align-items: end;">
+        <label class="field">
+            <span>Chọn Ngày</span>
+            <input type="date" id="filterDate" style="border: 1px solid var(--border); padding: 8px;">
+        </label>
+        <button class="button primary" onclick="filterByDate()">🔍 Tìm kiếm</button>
+        <button class="button secondary" onclick="loadLatestPlates()">📊 Mới nhất</button>
+    </div>
+</section>
+
+<section class="panel margin-top">
+    <div class="panel-header">
+        <div>
+            <p class="eyebrow">Bảng Dữ liệu</p>
+            <h3>Danh Sách Biển Số</h3>
+        </div>
+    </div>
+
+    <div id="platesList" style="display: grid; gap: 16px;">
+        <div class="empty-state">
+            <span class="empty-icon">📋</span>
+            <p class="muted">Đang tải dữ liệu...</p>
+        </div>
+    </div>
+</section>
+
+<script>
+async function loadLatestPlates() {
+    try {
+        const response = await portalApi.get('/api/license-plates?limit=100');
+        displayPlates(response.plates || []);
+    } catch (error) {
+        portalApi.showToast('Lỗi tải dữ liệu: ' + error.message, 'error', 'Lỗi');
+        console.error(error);
+    }
+}
+
+async function filterByDate() {
+    const date = document.getElementById('filterDate').value;
+    if (!date) {
+        portalApi.showToast('Vui lòng chọn ngày', 'warning', 'Cảnh báo');
+        return;
+    }
+    
+    try {
+        const response = await portalApi.get(`/api/license-plates/date/${date}`);
+        displayPlates(response.plates || []);
+    } catch (error) {
+        portalApi.showToast('Lỗi tải dữ liệu: ' + error.message, 'error', 'Lỗi');
+        console.error(error);
+    }
+}
+
+function displayPlates(plates) {
+    const container = document.getElementById('platesList');
+    
+    if (!plates || plates.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-icon">🚫</span>
+                <p class="muted">Không có biển số nào</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; font-size: 0.9rem;">
+                <thead>
+                    <tr style="border-bottom: 2px solid var(--border);">
+                        <th style="text-align: left; padding: 12px; color: var(--text-muted);">Biển Số</th>
+                        <th style="text-align: center; padding: 12px; color: var(--text-muted);">Ngày</th>
+                        <th style="text-align: center; padding: 12px; color: var(--text-muted);">Lần Phát Hiện</th>
+                        <th style="text-align: center; padding: 12px; color: var(--text-muted);">Độ Chính Xác</th>
+                        <th style="text-align: center; padding: 12px; color: var(--text-muted);">Ảnh</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${plates.map(plate => `
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 12px;">
+                                <code style="background: var(--bg-3); padding: 6px 10px; border-radius: 4px; font-weight: bold; color: var(--primary);">
+                                    ${plate.license_plate || 'N/A'}
+                                </code>
+                            </td>
+                            <td style="text-align: center; padding: 12px; color: var(--text-muted);">
+                                ${plate.detected_date || 'N/A'}
+                            </td>
+                            <td style="text-align: center; padding: 12px;">
+                                <span class="pill success">${plate.detection_count || 0}</span>
+                            </td>
+                            <td style="text-align: center; padding: 12px;">
+                                <span class="pill info">${((plate.avg_confidence || 0) * 100).toFixed(1)}%</span>
+                            </td>
+                            <td style="text-align: center; padding: 12px;">
+                                ${plate.image_paths ? `
+                                    <a href="${plate.image_paths}" target="_blank" class="button secondary xs">
+                                        📷 Xem
+                                    </a>
+                                ` : '<span class="muted">Không có</span>'}
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// Load dữ liệu khi trang mở
+document.addEventListener('DOMContentLoaded', () => {
+    loadLatestPlates();
+});
+</script>
+{% endblock %}

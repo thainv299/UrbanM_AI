@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Tổng quan | CityVision AI Portal{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Quản trị Hệ thống</p>
+        <h2 class="page-title">Bảng điều khiển Trung tâm</h2>
+        <p class="muted">Theo dõi trạng thái hệ thống, lưu lượng giao thông và quản lý các điểm giám sát AI.</p>
+    </div>
+    <div class="header-actions">
+        <a class="button primary" href="{{ url_for('test_video.test_video_page') }}">⚡ Chạy Phân tích</a>
+    </div>
+</div>
+
+<!-- Stats -->
+<section class="stats-grid">
+    <article class="stat-card">
+        <span class="stat-icon">👥</span>
+        <span class="stat-label">Người dùng</span>
+        <strong>{{ stats.user_count }}</strong>
+        <p class="stat-sub">Tài khoản trong hệ thống</p>
+    </article>
+    <article class="stat-card cyan">
+        <span class="stat-icon">📷</span>
+        <span class="stat-label">Tổng Camera</span>
+        <strong>{{ stats.camera_count }}</strong>
+        <p class="stat-sub">Điểm giám sát khai báo</p>
+    </article>
+    <article class="stat-card green">
+        <span class="stat-icon">🟢</span>
+        <span class="stat-label">Đang Hoạt động</span>
+        <strong>{{ stats.active_cameras }}</strong>
+        <p class="stat-sub">Camera sẵn sàng xử lý</p>
+    </article>
+    <article class="stat-card pink">
+        <span class="stat-icon">🤖</span>
+        <span class="stat-label">Model AI</span>
+        <strong>YOLO26</strong>
+        <p class="stat-sub">Trạng thái: Sẵn sàng</p>
+    </article>
+</section>
+
+<!-- Body -->
+<section class="split-layout two-columns">
+    <!-- Quick Actions -->
+    <article class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Điều hướng</p>
+                <h3>Thao tác Nhanh</h3>
+            </div>
+        </div>
+        <div style="display: grid; gap: 14px;">
+            {% if current_user.role == 'admin' %}
+            <a class="panel" href="{{ url_for('users.users_page') }}"
+                style="display: block; padding: 18px 20px; text-decoration: none; border-radius: var(--r-lg);">
+                <strong
+                    style="display: flex; align-items: center; gap: 10px; font-size: 1rem; margin-bottom: 4px; color: var(--text);">
+                    <span>👥</span> Quản lý Người dùng
+                </strong>
+                <p class="muted small">Cấp quyền, tạo mới hoặc khóa tài khoản vận hành.</p>
+            </a>
+            {% endif %}
+            <a class="panel" href="{{ url_for('cameras.cameras_page') }}"
+                style="display: block; padding: 18px 20px; text-decoration: none; border-radius: var(--r-lg);">
+                <strong
+                    style="display: flex; align-items: center; gap: 10px; font-size: 1rem; margin-bottom: 4px; color: var(--text);">
+                    <span>📷</span> Cấu hình Camera
+                </strong>
+                <p class="muted small">Thiết lập nguồn RTSP, ROI và các vùng cảnh báo.</p>
+            </a>
+            <a class="panel" href="{{ url_for('test_video.test_video_page') }}"
+                style="display: block; padding: 18px 20px; text-decoration: none; border-radius: var(--r-lg);">
+                <strong
+                    style="display: flex; align-items: center; gap: 10px; font-size: 1rem; margin-bottom: 4px; color: var(--text);">
+                    <span>📹</span> Phân tích Video
+                </strong>
+                <p class="muted small">Tải lên dữ liệu mẫu để kiểm tra độ chính xác của AI.</p>
+            </a>
+        </div>
+    </article>
+
+    <!-- Recent Cameras -->
+    <article class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Cập nhật Gần đây</p>
+                <h3>Điểm giám sát Mới nhất</h3>
+            </div>
+            <a href="{{ url_for('cameras.cameras_page') }}" class="button secondary sm">Xem tất cả</a>
+        </div>
+
+        {% if stats.recent_cameras %}
+        <div style="display: grid; gap: 12px;">
+            {% for camera in stats.recent_cameras %}
+            <div class="panel" style="padding: 16px 20px; border-radius: var(--r-lg);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <strong style="font-size: 0.95rem; color: var(--text);">{{ camera.name }}</strong>
+                    <span class="badge {% if camera.is_active %}success{% else %}muted{% endif %}">
+                        <span class="dot"></span>
+                        {{ 'Hoạt động' if camera.is_active else 'Ngoại tuyến' }}
+                    </span>
+                </div>
+                <div class="pill-row">
+                    {% if camera.enable_congestion %}
+                    <span class="pill teal">Tắc nghẽn</span>
+                    {% endif %}
+                    {% if camera.enable_illegal_parking %}
+                    <span class="pill orange">Đỗ xe sai</span>
+                    {% endif %}
+                    {% if camera.enable_license_plate %}
+                    <span class="pill info">Biển số</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <span class="empty-icon">📷</span>
+            <p class="muted">Chưa có camera nào được cấu hình.</p>
+            <a href="{{ url_for('cameras.cameras_page') }}" class="button secondary sm">Thêm Camera ngay</a>
+        </div>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

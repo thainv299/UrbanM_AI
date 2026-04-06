@@ -1,116 +1,162 @@
 {% extends "base.html" %}
 
-{% block title %}Tổng quan | Crow Detection Portal{% endblock %}
+{% block title %}Tổng quan | CityVision AI Portal{% endblock %}
 
 {% block content %}
-<section class="page-head">
+<div class="page-head">
     <div>
-        <p class="eyebrow">Tổng quan hệ thống</p>
-        <h2>Bảng điều khiển vận hành</h2>
-        <p class="muted">Theo dõi nhanh người dùng, camera và trạng thái các chức năng phát hiện.</p>
+        <p class="eyebrow">Quản trị Hệ thống</p>
+        <h2 class="page-title">Bảng điều khiển Trung tâm</h2>
+        <p class="muted">Theo dõi trạng thái hệ thống, lưu lượng giao thông và quản lý các điểm giám sát AI.</p>
     </div>
-    <a class="button primary" href="{{ url_for('test_video_page') }}">Chạy test video</a>
-</section>
+    <div class="header-actions">
+        <a class="button primary" href="{{ url_for('test_video.test_video_page') }}">⚡ Chạy Phân tích</a>
+    </div>
+</div>
 
+<!-- Stats -->
 <section class="stats-grid">
-    <a href="{{ url_for('cameras_page') }}" style="text-decoration: none; color: inherit;">
-        <article class="stat-card accent">
-            <span class="stat-label">Tổng xe trong ngày</span>
-            <strong>{{ stats.total_vehicles }}</strong>
-            <p>Số phương tiện ghi nhận hôm nay.</p>
-            <small>→ Xem chi tiết camera</small>
-        </article>
+    {% if current_user.role == 'admin' %}
+    <a href="{{ url_for('users.users_page') }}" class="stat-card" style="text-decoration: none; cursor: pointer; color: inherit;">
+        <span class="stat-icon">👥</span>
+        <span class="stat-label">Người dùng</span>
+        <strong>{{ stats.user_count }}</strong>
+        <p class="stat-sub">Tài khoản trong hệ thống</p>
     </a>
-
-    <a href="{{ url_for('test_video_page') }}" style="text-decoration: none; color: inherit;">
-        <article class="stat-card warning">
-            <span class="stat-label">Xe vi phạm hôm nay</span>
-            <strong>{{ stats.violation_count }}</strong>
-            <p>Phát hiện đỗ sai / Tắc nghẽn.</p>
-            <small style="color: #e67e22;">→ Kiểm tra luồng phát hiện</small>
-        </article>
+    {% endif %}
+    <a href="{{ url_for('cameras.cameras_page') }}" class="stat-card cyan" style="text-decoration: none; cursor: pointer; color: inherit;">
+        <span class="stat-icon">📷</span>
+        <span class="stat-label">Tổng Camera</span>
+        <strong>{{ stats.camera_count }}</strong>
+        <p class="stat-sub">Điểm giám sát khai báo</p>
     </a>
-
-    <article class="stat-card">
-        <span class="stat-label">Biển số gần nhất</span>
-        <div style="margin-top: 10px; text-align: left;">
-            {% if stats.recent_plates %}
-                {% for item in stats.recent_plates %}
-                    <div style="font-family: 'Courier New', Courier, monospace; font-weight: bold; border-bottom: 1px solid #eee; padding: 2px 0;">
-                        {{ item.license_plate }} 
-                        <span style="font-size: 0.7rem; color: gray;">({{ item.created_at.split(' ')[1] }})</span>
-                    </div>
-                {% endfor %}
-            {% else %}
-                <p class="muted">Chưa có dữ liệu...</p>
-            {% endif %}
-        </div>
+    <a href="{{ url_for('cameras.cameras_page') }}" class="stat-card green" style="text-decoration: none; cursor: pointer; color: inherit;">
+        <span class="stat-icon">🟢</span>
+        <span class="stat-label">Đang Hoạt động</span>
+        <strong>{{ stats.active_cameras }}</strong>
+        <p class="stat-sub">Camera sẵn sàng xử lý</p>
+    </a>
+    <article class="stat-card pink" style="cursor: default;">
+        <span class="stat-icon">🤖</span>
+        <span class="stat-label">Model AI</span>
+        <strong>YOLO26</strong>
+        <p class="stat-sub">Trạng thái: Sẵn sàng</p>
     </article>
+    <a href="{{ url_for('test_video.test_video_page') }}" class="stat-card purple" style="text-decoration: none; cursor: pointer; color: inherit;">
+        <span class="stat-icon">🚗</span>
+        <span class="stat-label">Xe Đi Qua</span>
+        <strong>{{ stats.total_vehicles }}</strong>
+        <p class="stat-sub">Tổng số xe được ghi nhận</p>
+    </a>
+    <a href="{{ url_for('test_video.test_video_page') }}" class="stat-card orange" style="text-decoration: none; cursor: pointer; color: inherit;">
+        <span class="stat-icon">⛔</span>
+        <span class="stat-label">Đỗ Sai</span>
+        <strong>{{ stats.parking_violations|length }}</strong>
+        <p class="stat-sub">Xe chưa giải quyết vi phạm</p>
+    </a>
+    <a href="{{ url_for('test_video.test_video_page') }}" class="stat-card red" style="text-decoration: none; cursor: pointer; color: inherit;">
+        <span class="stat-icon">🚦</span>
+        <span class="stat-label">Tắc Nghẽn</span>
+        <strong>{{ stats.congestion_count }}</strong>
+        <p class="stat-sub">Lần tắc nghẽn hôm nay</p>
+    </a>
 </section>
 
-<section class="split-layout two-columns">
+<!-- Body -->
+<section>
+    <!-- Recent Cameras -->
     <article class="panel">
         <div class="panel-header">
             <div>
-                <p class="eyebrow">Truy cập nhanh</p>
-                <h3>Các tác vụ chính</h3>
+                <p class="eyebrow">Cập nhật Gần đây</p>
+                <h3>Điểm giám sát Mới nhất</h3>
             </div>
-        </div>
-        <div class="action-list">
-            {% if current_user.role == 'admin' %}
-            <a class="action-tile" href="{{ url_for('users_page') }}">
-                <strong>Quản lý tài khoản</strong>
-                <p>Thêm, sửa, khóa hoặc xóa tài khoản người dùng.</p>
-            </a>
-            {% endif %}
-            <a class="action-tile" href="{{ url_for('cameras_page') }}">
-                <strong>Quản lý camera</strong>
-                <p>Khai báo nguồn camera, ROI, vùng cấm đỗ và bật hoặc tắt chức năng detect.</p>
-            </a>
-            <a class="action-tile" href="{{ url_for('test_video_page') }}">
-                <strong>Test bằng video</strong>
-                <p>Upload video hoặc chọn đường dẫn local để kiểm tra luồng phát hiện.</p>
-            </a>
-        </div>
-    </article>
-
-    <article class="panel">
-        <div class="panel-header">
-            <div>
-                <p class="eyebrow">Camera gần đây</p>
-                <h3>Cấu hình mới cập nhật</h3>
-            </div>
+            <a href="{{ url_for('cameras.cameras_page') }}" class="button secondary sm">Xem tất cả</a>
         </div>
 
         {% if stats.recent_cameras %}
-        <div class="camera-list compact-list">
+        <div style="display: grid; gap: 12px;">
             {% for camera in stats.recent_cameras %}
-            <article class="camera-mini-card">
-                <div class="camera-mini-head">
-                    <strong>{{ camera.name }}</strong>
+            <div class="panel" style="padding: 16px 20px; border-radius: var(--r-lg);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <strong style="font-size: 0.95rem; color: var(--text);">{{ camera.name }}</strong>
                     <span class="badge {% if camera.is_active %}success{% else %}muted{% endif %}">
-                        {{ 'Đang bật' if camera.is_active else 'Tắt' }}
+                        <span class="dot"></span>
+                        {{ 'Hoạt động' if camera.is_active else 'Ngoại tuyến' }}
                     </span>
                 </div>
-                <p class="muted small">{{ camera.stream_source or 'Chưa có nguồn camera' }}</p>
                 <div class="pill-row">
-                    <span class="pill {% if camera.enable_congestion %}teal{% else %}gray{% endif %}">
-                        Tắc nghẽn {{ 'ON' if camera.enable_congestion else 'OFF' }}
-                    </span>
-                    <span class="pill {% if camera.enable_illegal_parking %}orange{% else %}gray{% endif %}">
-                        Đỗ sai {{ 'ON' if camera.enable_illegal_parking else 'OFF' }}
-                    </span>
-                    <span class="pill {% if camera.enable_license_plate %}teal{% else %}gray{% endif %}">
-                        Biển số {{ 'ON' if camera.enable_license_plate else 'OFF' }}
-                    </span>
+                    {% if camera.enable_congestion %}
+                    <span class="pill teal">Tắc nghẽn</span>
+                    {% endif %}
+                    {% if camera.enable_illegal_parking %}
+                    <span class="pill orange">Đỗ xe sai</span>
+                    {% endif %}
+                    {% if camera.enable_license_plate %}
+                    <span class="pill info">Biển số</span>
+                    {% endif %}
                 </div>
-            </article>
+            </div>
             {% endfor %}
         </div>
         {% else %}
         <div class="empty-state">
-            <h3>Chưa có camera nào</h3>
-            <p>Thêm camera đầu tiên để bắt đầu cấu hình hiển thị và phát hiện.</p>
+            <span class="empty-icon">📷</span>
+            <p class="muted">Chưa có camera nào được cấu hình.</p>
+            <a href="{{ url_for('cameras.cameras_page') }}" class="button secondary sm">Thêm Camera ngay</a>
+        </div>
+        {% endif %}
+    </article>
+</section>
+
+<!-- Illegal Parking Violations -->
+<section>
+    <article class="panel">
+        <div class="panel-header">
+            <div>
+                <p class="eyebrow">Cảnh báo Giao thông</p>
+                <h3>Xe Đỗ Sai - Chưa Giải Quyết</h3>
+            </div>
+            <a href="{{ url_for('cameras.cameras_page') }}" class="button secondary sm">Xem Tất Cả</a>
+        </div>
+
+        {% if stats.parking_violations %}
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; font-size: 0.9rem;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--border);">
+                        <th style="text-align: left; padding: 12px; color: var(--text-muted);">Camera</th>
+                        <th style="text-align: left; padding: 12px; color: var(--text-muted);">Biển Số</th>
+                        <th style="text-align: left; padding: 12px; color: var(--text-muted);">Thời Gian</th>
+                        <th style="text-align: left; padding: 12px; color: var(--text-muted);">Thời Lượng</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for violation in stats.parking_violations[:5] %}
+                    <tr style="border-bottom: 1px solid var(--border);">
+                        <td style="padding: 12px;">
+                            <strong style="color: var(--text);">{{ violation.camera_name or 'N/A' }}</strong>
+                        </td>
+                        <td style="padding: 12px;">
+                            <code style="background: var(--bg-3); padding: 4px 8px; border-radius: 4px;">
+                                {{ violation.license_plate or 'Chưa nhận diện' }}
+                            </code>
+                        </td>
+                        <td style="padding: 12px; color: var(--text-muted);">
+                            {{ (violation.violation_time or '')[:19] }}
+                        </td>
+                        <td style="padding: 12px;">
+                            <span class="pill warning">{{ (violation.duration_seconds or 0) // 60 }} phút</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <span class="empty-icon">✅</span>
+            <p class="muted">Không có vi phạm đỗ xe nào cần xử lý.</p>
         </div>
         {% endif %}
     </article>
