@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}Test Video | Crow Detection Portal{% endblock %}
+{% block title %}Test Video | City Vision Portal{% endblock %}
 
 {% block content %}
 <section class="page-head">
     <div>
         <p class="eyebrow">Kiểm tra chức năng</p>
         <h2>Test bằng video</h2>
-        <p class="muted">Upload video hoặc dùng đường dẫn local để tạo video kết quả và kiểm tra tắc nghẽn, đỗ xe sai quy định.</p>
+        <p class="muted">Upload video hoặc dùng đường dẫn local để tạo video kết quả và kiểm tra tắc nghẽn, đỗ xe sai
+            quy định.</p>
     </div>
 </section>
 
@@ -80,7 +81,8 @@
                 <span class="label-text">ROI polygon (tùy chọn)</span>
                 <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
                     <input type="file" id="test_roi_file_picker" accept=".json" style="display: none;">
-                    <button type="button" class="button secondary" onclick="document.getElementById('test_roi_file_picker').click()">Chọn file .json</button>
+                    <button type="button" class="button secondary"
+                        onclick="document.getElementById('test_roi_file_picker').click()">Chọn file .json</button>
                     <span id="test_roi_points_status" class="muted">Nếu để trống sẽ dùng cấu hình camera.</span>
                 </div>
                 <input type="hidden" id="test_roi_points" name="roi_points">
@@ -90,7 +92,9 @@
                 <span class="label-text">Vùng cấm đỗ (tùy chọn)</span>
                 <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
                     <input type="file" id="test_no_parking_file_picker" accept=".json" style="display: none;">
-                    <button type="button" class="button secondary" onclick="document.getElementById('test_no_parking_file_picker').click()">Chọn file .json</button>
+                    <button type="button" class="button secondary"
+                        onclick="document.getElementById('test_no_parking_file_picker').click()">Chọn file
+                        .json</button>
                     <span id="test_no_parking_points_status" class="muted">Nếu để trống sẽ dùng cấu hình camera.</span>
                 </div>
                 <input type="hidden" id="test_no_parking_points" name="no_parking_points">
@@ -114,7 +118,8 @@
             <article class="status-card">
                 <span class="pill gray">Sẵn sàng</span>
                 <h4>Chưa có job nào đang chạy</h4>
-                <p class="muted">Sau khi gửi video, portal sẽ xử lý ở backend và trả về video kết quả có overlay detect.</p>
+                <p class="muted">Sau khi gửi video, portal sẽ xử lý ở backend và trả về video kết quả có overlay detect.
+                </p>
             </article>
         </div>
     </section>
@@ -147,8 +152,10 @@
                     <h3>Stream trực tiếp từ backend</h3>
                 </div>
             </div>
-            <img id="stream-output" class="result-video" alt="Stream phân tích video" style="width:100%; background:#111; min-height:300px; object-fit:contain; border-radius:8px;">
-            <p id="stream-output-note" class="muted">Luồng phát trực tiếp sẽ hiển thị khi backend bắt đầu xử lý video.</p>
+            <img id="stream-output" class="result-video" alt="Stream phân tích video"
+                style="width:100%; background:#111; min-height:300px; object-fit:contain; border-radius:8px;">
+            <p id="stream-output-note" class="muted">Luồng phát trực tiếp sẽ hiển thị khi backend bắt đầu xử lý video.
+            </p>
         </article>
     </div>
 

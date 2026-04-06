@@ -1,29 +1,36 @@
 <!doctype html>
 <html lang="vi">
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Crow Detection Portal{% endblock %}</title>
+    <title>{% block title %}City Vision Portal{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}">
 </head>
 {% set page_content %}{% block content %}{% endblock %}{% endset %}
+
 <body class="portal-body {% if current_user %}portal-authenticated{% else %}portal-public{% endif %}">
     {% if current_user %}
     <div class="portal-shell">
         <aside class="sidebar">
             <div class="brand-block">
-                <p class="eyebrow">Crow Detection</p>
+                <p class="eyebrow">City Vision</p>
                 <h1>Web Portal</h1>
-                <p class="brand-copy">Quản trị camera và kiểm tra nhanh các chức năng phát hiện trên một giao diện web riêng.</p>
+                <p class="brand-copy">Quản trị camera và kiểm tra nhanh các chức năng phát hiện trên một giao diện web
+                    riêng.</p>
             </div>
 
             <nav class="nav-links">
-                <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Tổng quan</a>
+                <a class="nav-link {% if page == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Tổng
+                    quan</a>
                 {% if current_user.role == 'admin' %}
-                <a class="nav-link {% if page == 'users' %}active{% endif %}" href="{{ url_for('users_page') }}">Người dùng</a>
+                <a class="nav-link {% if page == 'users' %}active{% endif %}" href="{{ url_for('users_page') }}">Người
+                    dùng</a>
                 {% endif %}
-                <a class="nav-link {% if page == 'cameras' %}active{% endif %}" href="{{ url_for('cameras_page') }}">Camera</a>
-                <a class="nav-link {% if page == 'test-video' %}active{% endif %}" href="{{ url_for('test_video_page') }}">Test Video</a>
+                <a class="nav-link {% if page == 'cameras' %}active{% endif %}"
+                    href="{{ url_for('cameras_page') }}">Camera</a>
+                <a class="nav-link {% if page == 'test-video' %}active{% endif %}"
+                    href="{{ url_for('test_video_page') }}">Test Video</a>
             </nav>
 
             <div class="sidebar-footer">
@@ -58,4 +65,5 @@
     <script src="{{ url_for('static', path='js/common.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
+
 </html>

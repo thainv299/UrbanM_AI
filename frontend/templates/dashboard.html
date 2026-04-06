@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Tổng quan | Crow Detection Portal{% endblock %}
+{% block title %}Tổng quan | City Vision Portal{% endblock %}
 
 {% block content %}
 <section class="page-head">
@@ -35,14 +35,15 @@
         <span class="stat-label">Biển số gần nhất</span>
         <div style="margin-top: 10px; text-align: left;">
             {% if stats.recent_plates %}
-                {% for item in stats.recent_plates %}
-                    <div style="font-family: 'Courier New', Courier, monospace; font-weight: bold; border-bottom: 1px solid #eee; padding: 2px 0;">
-                        {{ item.license_plate }} 
-                        <span style="font-size: 0.7rem; color: gray;">({{ item.created_at.split(' ')[1] }})</span>
-                    </div>
-                {% endfor %}
+            {% for item in stats.recent_plates %}
+            <div
+                style="font-family: 'Courier New', Courier, monospace; font-weight: bold; border-bottom: 1px solid #eee; padding: 2px 0;">
+                {{ item.license_plate }}
+                <span style="font-size: 0.7rem; color: gray;">({{ item.created_at.split(' ')[1] }})</span>
+            </div>
+            {% endfor %}
             {% else %}
-                <p class="muted">Chưa có dữ liệu...</p>
+            <p class="muted">Chưa có dữ liệu...</p>
             {% endif %}
         </div>
     </article>

@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}Camera | Crow Detection Portal{% endblock %}
+{% block title %}Camera | City Vision Portal{% endblock %}
 
 {% block content %}
 <section class="page-head">
     <div>
         <p class="eyebrow">Quản lý camera</p>
         <h2>Hiển thị camera và cấu hình detect</h2>
-        <p class="muted">Lưu nguồn camera, mô tả, ROI, vùng cấm đỗ và bật hoặc tắt phát hiện tắc nghẽn, đỗ xe sai quy định.</p>
+        <p class="muted">Lưu nguồn camera, mô tả, ROI, vùng cấm đỗ và bật hoặc tắt phát hiện tắc nghẽn, đỗ xe sai quy
+            định.</p>
     </div>
 </section>
 
@@ -55,19 +56,22 @@
 
             <label class="field">
                 <span>Nguồn camera</span>
-                <input type="text" id="stream_source" name="stream_source" placeholder="0, rtsp://..., hoặc đường dẫn file video">
+                <input type="text" id="stream_source" name="stream_source"
+                    placeholder="0, rtsp://..., hoặc đường dẫn file video">
             </label>
 
             <label class="field full-span">
                 <span>Mô tả</span>
-                <textarea id="description" name="description" rows="2" placeholder="Camera cổng chính, camera bãi đỗ..." ></textarea>
+                <textarea id="description" name="description" rows="2"
+                    placeholder="Camera cổng chính, camera bãi đỗ..."></textarea>
             </label>
 
             <div class="field full-span">
                 <span class="label-text">ROI polygon (tùy chọn)</span>
                 <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
                     <input type="file" id="roi_file_picker" accept=".json" style="display: none;">
-                    <button type="button" class="button secondary" onclick="document.getElementById('roi_file_picker').click()">Chọn file .json</button>
+                    <button type="button" class="button secondary"
+                        onclick="document.getElementById('roi_file_picker').click()">Chọn file .json</button>
                     <span id="roi_points_status" class="muted">Chưa có dữ liệu.</span>
                 </div>
                 <input type="hidden" id="roi_points" name="roi_points">
@@ -77,7 +81,8 @@
                 <span class="label-text">Vùng cấm đỗ (tùy chọn)</span>
                 <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
                     <input type="file" id="no_parking_file_picker" accept=".json" style="display: none;">
-                    <button type="button" class="button secondary" onclick="document.getElementById('no_parking_file_picker').click()">Chọn file .json</button>
+                    <button type="button" class="button secondary"
+                        onclick="document.getElementById('no_parking_file_picker').click()">Chọn file .json</button>
                     <span id="no_parking_points_status" class="muted">Chưa có dữ liệu.</span>
                 </div>
                 <input type="hidden" id="no_parking_points" name="no_parking_points">
