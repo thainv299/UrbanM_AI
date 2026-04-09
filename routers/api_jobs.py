@@ -105,6 +105,7 @@ async def api_create_test_job(request: Request, user=Depends(require_login)):
     try:
         form_data = {k: v for k, v in form.multi_items()}
         test_settings = build_test_settings(form_data, camera)
+        test_settings["camera_id"] = camera["id"] if camera else 0
     except ValueError as exc:
         return json_error(str(exc), 400)
 
@@ -145,3 +146,13 @@ def api_get_test_job(job_id: str, user=Depends(require_login)):
     if job is None:
         return json_error("Không tìm thấy job kiểm tra.", 404)
     return {"ok": True, "job": public_job(job)}
+
+@router.post("/api/test-jobs/{job_id}/stop")
+def api_stop_test_job(job_id: str, user=Depends(require_login)):
+    job = get_job(job_id)
+    if job is None:
+        return json_error("Không tìm thấy job kiểm tra.", 404)
+    if job.get("status") in ("queued", "running"):
+        set_job(job_id, status="aborted", message="Đang dừng job...")
+        return {"ok": True, "message": "Đã gửi yêu cầu dừng job."}
+    return json_error(f"Không thể dừng job ở trạng thái {job.get('status')}", 400)
