@@ -122,16 +122,20 @@ def run_detection_job(
 
                 with sqlite3.connect(DB_PATH) as conn:
                     conn.text_factory = str
+                    # Tao map de tra cuu nhanh bien so tu track_id
+                    plate_map = {v.get("track_id"): v.get("license_plate") for v in passed_vehicles if v.get("license_plate")}
+
                     for v in passed_vehicles:
-                        b_so = f"XE-{job_id[:4]}-{v.get('track_id', 0)}"
+                        b_so = v.get("license_plate") or f"XE-{job_id[:4]}-{v.get('track_id', 0)}"
                         conn.execute(
                             "INSERT INTO lich_su_phuong_tien (id_camera, bien_so_xe, loai_xe, thoi_gian_di_qua) VALUES (?, ?, ?, ?)",
                             (camera_id, b_so, v.get("label", "unknown"), v.get("timestamp"))
                         )
                     for v_id in violation_ids:
+                        b_so_vi_pham = plate_map.get(v_id) or f"VP-{v_id}"
                         conn.execute(
                             "INSERT INTO vi_pham_do_xe (id_camera, bien_so, thoi_gian_vi_pham, thoi_gian_do_giay, duong_dan_anh) VALUES (?, ?, ?, ?, ?)",
-                            (camera_id, f"VP-{v_id}", time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime()), 0, "")
+                            (camera_id, b_so_vi_pham, time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime()), 0, "")
                         )
                     conn.commit()
             except Exception as e:

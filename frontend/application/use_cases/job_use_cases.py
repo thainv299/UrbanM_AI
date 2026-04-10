@@ -45,6 +45,15 @@ class JobUseCases:
                 return index
         return None
 
+    def abort_job(self, job_id: str) -> bool:
+        with self.job_lock:
+            job = self.jobs.get(job_id)
+            if job and job.status in {"queued", "running"}:
+                job.status = "aborted"
+                job.message = "Đã dừng bởi người dùng."
+                return True
+        return False
+
     def run_detection_job(
         self,
         job_id: str,
@@ -59,6 +68,12 @@ class JobUseCases:
             preview_jpeg = progress_payload.pop("preview_jpeg", None)
             if preview_jpeg:
                 self.file_storage.save_preview_image(job_id, preview_jpeg)
+
+            # Kiểm tra tín hiệu dừng từ người dùng
+            with self.job_lock:
+                current_job = self.jobs.get(job_id)
+                if current_job and current_job.status == "aborted":
+                    raise RuntimeError("ABORTED_BY_USER")
 
             phase = progress.get("phase")
             percent = progress.get("progress_percent")
@@ -140,11 +155,19 @@ class JobUseCases:
             )
         except Exception as exc:
             self.file_storage.delete_output_file(output_filename)
+            
+            final_status = "failed"
+            final_message = "Xử lý video thất bại."
+            
+            if str(exc) == "ABORTED_BY_USER":
+                final_status = "aborted"
+                final_message = "Đã dừng phân tích video theo yêu cầu."
+                
             self.set_job(
                 job_id,
-                status="failed",
-                message="Xử lý video thất bại.",
-                error=str(exc),
+                status=final_status,
+                message=final_message,
+                error=None if final_status == "aborted" else str(exc),
                 summary=None,
                 output_filename=None,
                 finished_at=time.time(),

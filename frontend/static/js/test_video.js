@@ -80,7 +80,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (status === "completed") {
             return "success";
         }
-        if (status === "queued") {
+        if (status === "queued" || status === "aborted") {
             return "warning";
         }
         if (status === "running") {
@@ -335,6 +335,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 renderSummary(job.summary || {});
                 finalizeButtons();
                 stopPolling();
+                return;
+            }
+            if (job.status === "aborted") {
+                finalizeButtons();
+                stopPolling();
+                return;
             }
         } catch (error) {
             window.portalApi.showNotice(feedback, error.message, "error");

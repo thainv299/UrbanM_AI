@@ -16,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from modules.parking.parking_logic import WAITING, VIOLATION, ViolationLogic
 from modules.traffic.traffic_monitor import TrafficMonitor
+from infrastructure.ml.ocr_license_plate import ocr_read_license_plate, save_plate_image
 
 TRAFFIC_LABELS = {"person", "car", "motorcycle", "bus", "truck"}
 VEHICLE_LABELS = {"car", "motorcycle", "bus", "truck"}
@@ -179,6 +180,31 @@ class ParkingOverlayMonitor:
         cv2.polylines(frame, [self.no_parking_polygon], True, (0, 0, 255), 2)
 
 
+def _get_best_vehicle_for_plate(plate_bbox: Tuple[int, int, int, int], vehicle_boxes: List[Dict[str, Any]]) -> Optional[int]:
+    """Tìm ID track của phương tiện chứa hoặc gần biển số nhất."""
+    px1, py1, px2, py2 = plate_bbox
+    best_id = None
+    max_overlap = -1.0
+    
+    for v in vehicle_boxes:
+        vx1, vy1, vx2, vy2 = v["bbox"]
+        # Kiểm tra xem biển số có nằm trong (hoặc phần lớn trong) khung xe không
+        ix1 = max(px1, vx1)
+        iy1 = max(py1, vy1)
+        ix2 = min(px2, vx2)
+        iy2 = min(py2, vy2)
+        
+        if ix1 < ix2 and iy1 < iy2:
+            intersection = (ix2 - ix1) * (iy2 - iy1)
+            plate_area = (px2 - px1) * (py2 - py1)
+            overlap = intersection / plate_area
+            if overlap > max_overlap:
+                max_overlap = overlap
+                best_id = v["track_id"]
+                
+    return best_id
+
+
 def process_video(
     input_path: str,
     output_path: str,
@@ -282,6 +308,7 @@ def process_video(
                 traffic_monitor.reset_counters()
 
             current_license_plate_count = 0
+            vehicle_boxes_in_frame = []
 
             for result in results:
                 for box in result.boxes:
@@ -302,12 +329,35 @@ def process_video(
                     if cv2.pointPolygonTest(roi_polygon, (center_x, center_y), False) < 0:
                         continue
 
+                    # Lưu tạm các box phương tiện trong frame này để khớp với biển số sau
+                    if track_id != -1 and label in VEHICLE_LABELS:
+                        vehicle_boxes_in_frame.append({"track_id": track_id, "bbox": (x1, y1, x2, y2)})
+
                     box_color = BOX_COLORS.get(label, (255, 255, 255))
                     label_text = _display_label(label)
                     display_label = label_text if track_id == -1 else f"ID:{track_id} {label_text}"
 
                     if label in LICENSE_PLATE_LABELS:
                         current_license_plate_count += 1
+                        
+                        # Thực hiện OCR cho biển số
+                        if enable_license_plate and confidence > 0.4:
+                            plate_img = frame[y1:y2, x1:x2]
+                            plate_text, ocr_conf = ocr_read_license_plate(plate_img)
+                            
+                            if plate_text:
+                                # Khớp biển số vừa đọc được với một phương tiện trong frame
+                                v_id = _get_best_vehicle_for_plate((x1, y1, x2, y2), vehicle_boxes_in_frame)
+                                if v_id is not None and v_id in active_tracks:
+                                    # Chỉ cập nhật nếu biển số mới có độ tin cậy hoặc chiều dài tốt hơn (heuristic đơn giản)
+                                    old_plate = active_tracks[v_id].get("license_plate")
+                                    if not old_plate or len(plate_text) >= len(old_plate):
+                                        active_tracks[v_id]["license_plate"] = plate_text
+                                        # (Tùy chọn) Lưu ảnh biển số
+                                        save_plate_image(plate_img, plate_text)
+                                
+                                label_text = f"BS: {plate_text}"
+                                box_color = (0, 255, 0) # Xanh lá cho biển số đã đọc được
 
                     if track_id != -1 and label in VEHICLE_LABELS:
                         if track_id not in active_tracks:
@@ -362,6 +412,7 @@ def process_video(
                     passed_vehicles.append({
                         "track_id": t_id,
                         "label": info["label"],
+                        "license_plate": info.get("license_plate"),
                         "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())
                     })
                     del active_tracks[t_id]
@@ -461,6 +512,7 @@ def process_video(
             passed_vehicles.append({
                 "track_id": t_id,
                 "label": info["label"],
+                "license_plate": info.get("license_plate"),
                 "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())
             })
 

@@ -209,6 +209,18 @@ async def api_get_test_job(request: Request, job_id: str, user=Depends(login_req
     payload["queue_position"] = container.job_use_cases.get_queue_position(job.id)
 
     return {"ok": True, "job": payload}
+    
+
+@test_video_router.post("/api/test-jobs/{job_id}/stop")
+async def api_stop_test_job(job_id: str, user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+    
+    success = container.job_use_cases.abort_job(job_id)
+    if not success:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "Không tìm thấy job đang chạy hoặc ở hàng đợi."})
+        
+    return {"ok": True, "message": "Đã gửi yêu cầu dừng phân tích."}
 
 
 @test_video_router.get("/results/{filename}", name="test_video.serve_result_video")
