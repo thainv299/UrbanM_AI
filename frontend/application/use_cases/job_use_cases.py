@@ -48,17 +48,24 @@ class JobUseCases:
     def run_detection_job(
         self,
         job_id: str,
-        input_path: str,
-        output_filename: str,
+        input_stream: Any,
+        input_ext: str,
         detection_settings: Dict[str, Any],
     ) -> None:
-        output_path = self.file_storage.get_output_path(output_filename)
-
         def handle_progress(progress: Dict[str, Any]) -> None:
+            # Kiểm tra xem người dùng có đóng tab hay ngắt Stream chưa để dừng xử lý sớm
+            with self.job_lock:
+                current = self.jobs.get(job_id)
+                if current and current.status == "aborted":
+                    raise RuntimeError("Job da bi huy boi luong stream.")
+
             progress_payload = dict(progress)
             preview_jpeg = progress_payload.pop("preview_jpeg", None)
             if preview_jpeg:
-                self.file_storage.save_preview_image(job_id, preview_jpeg)
+                with self.job_lock:
+                    job = self.jobs.get(job_id)
+                    if job:
+                        job.latest_frame = preview_jpeg
 
             phase = progress.get("phase")
             percent = progress.get("progress_percent")
@@ -105,8 +112,8 @@ class JobUseCases:
 
         try:
             summary = self.detection_service.process_video(
-                input_path=input_path,
-                output_path=str(output_path),
+                input_stream=input_stream,
+                input_ext=input_ext,
                 settings=detection_settings,
                 progress_callback=handle_progress,
             )
@@ -127,7 +134,7 @@ class JobUseCases:
                 message="Đã hoàn thành xử lý video.",
                 error=None,
                 summary=summary,
-                output_filename=output_filename,
+                output_filename=None,
                 finished_at=time.time(),
                 progress={
                     "phase": "completed",
@@ -139,7 +146,6 @@ class JobUseCases:
                 },
             )
         except Exception as exc:
-            self.file_storage.delete_output_file(output_filename)
             self.set_job(
                 job_id,
                 status="failed",
@@ -150,7 +156,7 @@ class JobUseCases:
                 finished_at=time.time(),
             )
 
-    def submit_job(self, job_id: str, input_path: str, output_filename: str, settings: Dict[str, Any]) -> Job:
+    def submit_job(self, job_id: str, input_stream: Any, input_ext: str, settings: Dict[str, Any]) -> Job:
         submitted_at = time.time()
         job = self.set_job(
             job_id,
@@ -159,7 +165,7 @@ class JobUseCases:
             error=None,
             output_filename=None,
             summary=None,
-            source_video=input_path,
+            source_video=None,
             submitted_at=submitted_at,
             progress={
                 "phase": "queued",
@@ -174,8 +180,31 @@ class JobUseCases:
         self.executor.submit(
             self.run_detection_job,
             job_id,
-            input_path,
-            output_filename,
+            input_stream,
+            input_ext,
             settings,
         )
         return job
+
+    def stream_job_frames(self, job_id: str):
+        import asyncio
+        try:
+            while True:
+                with self.job_lock:
+                    job = self.jobs.get(job_id)
+                if not job:
+                    break
+                
+                if job.latest_frame:
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + job.latest_frame + b"\r\n"
+                
+                if job.status in ("completed", "failed", "aborted"):
+                    break
+                
+                time.sleep(0.03)  # Điều tiết tốc độ khung hình stream MJPEG để tránh quá tải CPU
+        finally:
+            with self.job_lock:
+                job = self.jobs.get(job_id)
+                if job and job.status in ("queued", "running"):
+                    job.status = "aborted"
+                    job.message = "Stream bị ngắt kết nối."

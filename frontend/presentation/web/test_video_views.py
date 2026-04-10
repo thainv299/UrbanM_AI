@@ -147,16 +147,21 @@ async def api_create_test_job(
         except NotFoundError:
             return JSONResponse(status_code=404, content={"ok": False, "error": "Camera được chọn không tồn tại."})
 
-    input_path = None
+    input_stream = None
+    input_ext = ""
     if video_file and video_file.filename:
         if not container.file_storage.is_allowed_video(video_file.filename):
             return JSONResponse(status_code=400, content={"ok": False, "error": "Định dạng video không được hỗ trợ."})
-        # Save file
-        input_path = container.file_storage.save_upload_fastapi(video_file, job_id)
+        input_ext = Path(video_file.filename).suffix.lower()
+        input_stream = io.BytesIO(await video_file.read())
     elif local_path and local_path.strip():
-        input_path = container.file_storage.resolve_local_video(local_path.strip())
-        if not input_path:
+        # Chuyển đổi video nội bộ (local path) thành luồng BytesIO để tương thích hoàn toàn với cơ chế stream
+        path_str = container.file_storage.resolve_local_video(local_path.strip())
+        if not path_str:
             return JSONResponse(status_code=400, content={"ok": False, "error": "Đường dẫn video local không hợp lệ."})
+        with open(path_str, "rb") as f:
+            input_stream = io.BytesIO(f.read())
+        input_ext = Path(path_str).suffix.lower()
     else:
         return JSONResponse(status_code=400, content={"ok": False, "error": "Hãy chọn file upload hoặc nhập đường dẫn local."})
 
@@ -178,17 +183,15 @@ async def api_create_test_job(
     except ValidationError as exc:
         return JSONResponse(status_code=400, content={"ok": False, "error": exc.message})
 
-    output_filename = f"{job_id}_result.mp4"
     job = container.job_use_cases.submit_job(
         job_id=job_id,
-        input_path=str(input_path),
-        output_filename=output_filename,
+        input_stream=input_stream,
+        input_ext=input_ext,
         settings=test_settings
     )
 
     payload = job.to_dict()
-    payload["input_video_url"] = str(request.url_for("test_video.serve_test_job_source", job_id=job.id))
-    payload["preview_image_url"] = str(request.url_for("test_video.serve_test_job_preview", job_id=job.id))
+    payload["stream_url"] = str(request.url_for("test_video.serve_test_job_stream", job_id=job.id))
     payload["queue_position"] = container.job_use_cases.get_queue_position(job.id)
 
     return JSONResponse(status_code=202, content={"ok": True, "job": payload})
@@ -203,36 +206,18 @@ async def api_get_test_job(request: Request, job_id: str, user=Depends(login_req
         return JSONResponse(status_code=404, content={"ok": False, "error": "Không tìm thấy job kiểm tra."})
         
     payload = job.to_dict()
-    payload["result_url"] = str(request.url_for("test_video.serve_result_video", filename=job.output_filename)) if job.output_filename else None
-    payload["input_video_url"] = str(request.url_for("test_video.serve_test_job_source", job_id=job.id)) if job.source_video else None
-    payload["preview_image_url"] = str(request.url_for("test_video.serve_test_job_preview", job_id=job.id))
+    payload["stream_url"] = str(request.url_for("test_video.serve_test_job_stream", job_id=job.id))
     payload["queue_position"] = container.job_use_cases.get_queue_position(job.id)
 
     return {"ok": True, "job": payload}
 
 
-@test_video_router.get("/results/{filename}", name="test_video.serve_result_video")
-async def serve_result_video(filename: str, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
-    output_dir = container.file_storage.get_output_path("").parent
-    file_path = output_dir / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404)
-    return FileResponse(file_path)
-
-
-@test_video_router.get("/job-sources/{job_id}", name="test_video.serve_test_job_source")
-async def serve_test_job_source(job_id: str, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
-    job = container.job_use_cases.get_job(job_id)
-    if not job or not job.source_video:
-        raise HTTPException(status_code=404)
-    source_path = Path(str(job.source_video))
-    if not source_path.exists():
-        raise HTTPException(status_code=404)
-    return FileResponse(source_path)
+@test_video_router.get("/api/test-jobs/{job_id}/stream", name="test_video.serve_test_job_stream")
+def serve_test_job_stream(job_id: str):
+    return StreamingResponse(
+        container.job_use_cases.stream_job_frames(job_id), 
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
 
 
 @test_video_router.get("/job-previews/{job_id}.jpg", name="test_video.serve_test_job_preview")

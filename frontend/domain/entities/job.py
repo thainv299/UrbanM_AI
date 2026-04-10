@@ -15,6 +15,7 @@ class Job:
     finished_at: Optional[float] = None
     summary: Optional[Dict[str, Any]] = None
     progress: Dict[str, Any] = field(default_factory=dict)
+    latest_frame: Optional[bytes] = None
 
     def to_dict(self) -> dict:
         return {
