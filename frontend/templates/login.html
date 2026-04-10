@@ -1,53 +1,80 @@
 {% extends "base.html" %}
 
-{% block title %}Đăng nhập | City Vision Portal{% endblock %}
+{% block title %}Đăng nhập | CityVision AI Portal{% endblock %}
 
 {% block content %}
-<section class="auth-layout">
-    <div class="auth-copy">
-        <p class="eyebrow">Nền tảng web độc lập</p>
-        <h2>Quản lý camera và kiểm tra phát hiện trên trình duyệt</h2>
-        <p class="lead">Portal này được viết riêng để kết nối frontend và backend mà không phải sửa bất kỳ file hiện có
-            nào của project.</p>
-        <div class="hero-grid">
-            <article class="hero-card">
-                <h3>Quản lý tài khoản</h3>
-                <p>Tạo, khóa, cập nhật người dùng đăng nhập ngay trên web.</p>
-            </article>
-            <article class="hero-card">
-                <h3>Quản lý camera</h3>
-                <p>Lưu nguồn camera, ROI, vùng cấm đỗ và bật hoặc tắt từng chức năng detect.</p>
-            </article>
-            <article class="hero-card">
-                <h3>Test video</h3>
-                <p>Upload video hoặc dùng đường dẫn local để tạo video kết quả và xem lại trong portal.</p>
-            </article>
+<div class="auth-shell">
+    <!-- Left hero panel -->
+    <div class="auth-hero">
+        <div class="auth-hero-brand">
+            <p class="hero-eyebrow">Hệ thống AI Tiên tiến</p>
+            <h2>Giải pháp Quản lý <span class="grad">Giao thông</span> Thông minh</h2>
+            <p>Giám sát, phân tích và tối ưu hóa luồng giao thông đô thị với công nghệ nhận diện hình ảnh YOLO26 hiện
+                đại nhất.</p>
+        </div>
+
+        <div class="auth-hero-features">
+            <div class="auth-feature-item">
+                <div class="auth-feature-icon">⚡</div>
+                <div>
+                    <strong>Phân tích Thời gian thực</strong>
+                    <p>Xử lý luồng video RTSP trực tiếp từ camera tốc độ cao</p>
+                </div>
+            </div>
+            <div class="auth-feature-item">
+                <div class="auth-feature-icon">🛡️</div>
+                <div>
+                    <strong>Phát hiện Vi phạm Tự động</strong>
+                    <p>Nhận diện đỗ xe sai, tắc nghẽn và biển số xe</p>
+                </div>
+            </div>
+            <div class="auth-feature-item">
+                <div class="auth-feature-icon">📊</div>
+                <div>
+                    <strong>Báo cáo & Cảnh báo Thông minh</strong>
+                    <p>Thông báo Telegram tức thời và lưu trữ kết quả phân tích</p>
+                </div>
+            </div>
         </div>
     </div>
 
-    <form class="panel auth-panel" method="post" action="{{ url_for('login') }}">
-        <div class="panel-header compact">
-            <p class="eyebrow">Đăng nhập</p>
-            <h2>Vào hệ thống</h2>
-            <p class="muted">Dùng tài khoản quản trị hoặc vận hành đã được cấp.</p>
+    <!-- Right form panel -->
+    <div class="auth-form-panel">
+        <div class="auth-form-head">
+            <p class="eyebrow">Đăng nhập hệ thống</p>
+            <h3>Chào mừng trở lại 👋</h3>
+            <p>Vui lòng đăng nhập để truy cập bảng điều khiển CityVision.</p>
         </div>
 
         {% if error %}
-        <div class="notice error">{{ error }}</div>
+        <div class="notice error" role="alert">
+            <span>⚠️</span> {{ error }}
+        </div>
         {% endif %}
 
-        <label class="field">
-            <span>Tên đăng nhập</span>
-            <input type="text" name="username" placeholder="admin" required autofocus>
-        </label>
+        <form method="post" action="{{ url_for('auth.login_page') }}" style="display: grid; gap: 18px;">
+            <label class="field">
+                <span>Tên đăng nhập</span>
+                <input id="login-username" type="text" name="username" placeholder="Nhập tên đăng nhập..." required
+                    autofocus autocomplete="username">
+            </label>
 
-        <label class="field">
-            <span>Mật khẩu</span>
-            <input type="password" name="password" placeholder="••••••••" required>
-        </label>
+            <label class="field">
+                <span>Mật khẩu</span>
+                <input id="login-password" type="password" name="password" placeholder="••••••••" required
+                    autocomplete="current-password">
+            </label>
 
-        <button type="submit" class="button primary full-width">Đăng nhập</button>
-        <p class="muted small">Tài khoản mặc định sau khi khởi tạo: <code>admin</code> / <code>Admin@123</code>.</p>
-    </form>
-</section>
+            <button id="btn-login" type="submit" class="button primary auth-submit">
+                Đăng nhập
+            </button>
+        </form>
+
+        <div class="auth-foot">
+            <p>Quên mật khẩu? Liên hệ quản trị viên hệ thống.</p>
+            <p style="margin-top: 8px;">Mặc định: <code
+                    style="color: var(--primary-2); font-family: var(--font-mono);">admin / Admin@123</code></p>
+        </div>
+    </div>
+</div>
 {% endblock %}

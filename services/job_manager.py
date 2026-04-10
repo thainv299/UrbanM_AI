@@ -121,21 +121,22 @@ def run_detection_job(
         )
         if summary:
             try:
-                total_v = summary.get("max_vehicle_count", 0)
-                total_vi = summary.get("parking_violation_count", 0)
+                passed_vehicles = summary.get("passed_vehicles", [])
                 violation_ids = summary.get("parking_violation_ids", [])
+                camera_id = detection_settings.get("camera_id", 0)
 
                 with sqlite3.connect(DB_PATH) as conn:
                     conn.text_factory = str
-                    for i in range(total_v):
+                    for v in passed_vehicles:
+                        b_so = f"XE-{job_id[:4]}-{v.get('track_id', 0)}"
                         conn.execute(
-                            "INSERT INTO vehicle_logs (license_plate, created_at) VALUES (?, datetime('now', 'localtime'))",
-                            (f"XE-{job_id[:4]}-{i+1}",)
+                            "INSERT INTO lich_su_phuong_tien (id_camera, bien_so_xe, loai_xe, thoi_gian_di_qua) VALUES (?, ?, ?, ?)",
+                            (camera_id, b_so, v.get("label", "unknown"), v.get("timestamp"))
                         )
                     for v_id in violation_ids:
                         conn.execute(
-                            "INSERT INTO violations (license_plate, type, created_at) VALUES (?, ?, datetime('now', 'localtime'))",
-                            (f"VP-{v_id}", "Do xe sai quy dinh")
+                            "INSERT INTO vi_pham_do_xe (id_camera, bien_so, thoi_gian_vi_pham, thoi_gian_do_giay, duong_dan_anh) VALUES (?, ?, ?, ?, ?)",
+                            (camera_id, f"VP-{v_id}", time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime()), 0, "")
                         )
                     conn.commit()
             except Exception as e:

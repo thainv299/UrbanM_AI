@@ -292,6 +292,9 @@ def process_video(
     congestion_frames = 0
     latest_status = "Dang bat dau phan tich"
     violation_events: List[Dict[str, Any]] = []
+    
+    active_tracks = {}
+    passed_vehicles = []
 
     try:
         while True:
@@ -339,6 +342,13 @@ def process_video(
                     if label in LICENSE_PLATE_LABELS:
                         current_license_plate_count += 1
 
+                    if track_id != -1 and label in VEHICLE_LABELS:
+                        if track_id not in active_tracks:
+                            active_tracks[track_id] = {"label": label, "first_seen": frame_index, "last_seen": frame_index}
+                        else:
+                            active_tracks[track_id]["last_seen"] = frame_index
+                            active_tracks[track_id]["label"] = label
+
                     if label == "person":
                         if traffic_monitor is not None:
                             traffic_monitor.log_person()
@@ -379,6 +389,15 @@ def process_video(
                     )
 
             max_license_plate_count = max(max_license_plate_count, current_license_plate_count)
+
+            for t_id, info in list(active_tracks.items()):
+                if frame_index - info["last_seen"] > process_stride * 10:
+                    passed_vehicles.append({
+                        "track_id": t_id,
+                        "label": info["label"],
+                        "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())
+                    })
+                    del active_tracks[t_id]
 
             cv2.polylines(frame, [roi_polygon], True, (255, 0, 0), 2)
             if parking_monitor is not None:
@@ -471,6 +490,12 @@ def process_video(
                 )
     finally:
         capture.release()
+        for t_id, info in list(active_tracks.items()):
+            passed_vehicles.append({
+                "track_id": t_id,
+                "label": info["label"],
+                "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())
+            })
 
     processing_seconds = max(0.001, time.time() - started_at)
     parking_violation_ids = (
@@ -514,6 +539,7 @@ def process_video(
             "enable_license_plate": enable_license_plate,
         },
         "violation_events": violation_events[:20],
+        "passed_vehicles": passed_vehicles,
     }
     finally:
         if should_cleanup_temp and input_video_path.exists():

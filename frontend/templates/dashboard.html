@@ -1,119 +1,179 @@
 {% extends "base.html" %}
 
-{% block title %}Tổng quan | City Vision Portal{% endblock %}
+{% block title %}Dashboard | CityVision AI Portal{% endblock %}
 
 {% block content %}
-<section class="page-head">
-    <div>
-        <p class="eyebrow">Tổng quan hệ thống</p>
-        <h2>Bảng điều khiển vận hành</h2>
-        <p class="muted">Theo dõi nhanh người dùng, camera và trạng thái các chức năng phát hiện.</p>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h2 class="page-title" style="margin-bottom: 0;">Dashboard</h2>
+    
+    <!-- Quick Actions -->
+    <div style="display: flex; gap: 12px;">
+        <a href="{{ url_for('cameras.cameras_page') }}" style="background: white; border: 1px solid #E2E8F0; padding: 8px 16px; border-radius: 8px; color: #202224; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: all 0.2s;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+            Thêm Camera
+        </a>
+        <a href="{{ url_for('test_video.test_video_page') }}" style="background: #4379EE; border: none; padding: 8px 16px; border-radius: 8px; color: white; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(67, 121, 238, 0.2); transition: all 0.2s;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            Chạy Test Video
+        </a>
     </div>
-    <a class="button primary" href="{{ url_for('test_video_page') }}">Chạy test video</a>
-</section>
+</div>
 
-<section class="stats-grid">
-    <a href="{{ url_for('cameras_page') }}" style="text-decoration: none; color: inherit;">
-        <article class="stat-card accent">
-            <span class="stat-label">Tổng xe trong ngày</span>
-            <strong>{{ stats.total_vehicles }}</strong>
-            <p>Số phương tiện ghi nhận hôm nay.</p>
-            <small>→ Xem chi tiết camera</small>
-        </article>
-    </a>
-
-    <a href="{{ url_for('test_video_page') }}" style="text-decoration: none; color: inherit;">
-        <article class="stat-card warning">
-            <span class="stat-label">Xe vi phạm hôm nay</span>
-            <strong>{{ stats.violation_count }}</strong>
-            <p>Phát hiện đỗ sai / Tắc nghẽn.</p>
-            <small style="color: #e67e22;">→ Kiểm tra luồng phát hiện</small>
-        </article>
-    </a>
-
-    <article class="stat-card">
-        <span class="stat-label">Biển số gần nhất</span>
-        <div style="margin-top: 10px; text-align: left;">
-            {% if stats.recent_plates %}
-            {% for item in stats.recent_plates %}
-            <div
-                style="font-family: 'Courier New', Courier, monospace; font-weight: bold; border-bottom: 1px solid #eee; padding: 2px 0;">
-                {{ item.license_plate }}
-                <span style="font-size: 0.7rem; color: gray;">({{ item.created_at.split(' ')[1] }})</span>
-            </div>
-            {% endfor %}
-            {% else %}
-            <p class="muted">Chưa có dữ liệu...</p>
-            {% endif %}
-        </div>
-    </article>
-</section>
-
-<section class="split-layout two-columns">
-    <article class="panel">
-        <div class="panel-header">
-            <div>
-                <p class="eyebrow">Truy cập nhanh</p>
-                <h3>Các tác vụ chính</h3>
+<!-- Stats -->
+<section class="ds-cards-wrapper">
+    <div class="ds-card">
+        <div class="ds-card-top">
+            <span class="ds-card-title">Người dùng</span>
+            <div class="ds-icon purple">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
             </div>
         </div>
-        <div class="action-list">
-            {% if current_user.role == 'admin' %}
-            <a class="action-tile" href="{{ url_for('users_page') }}">
-                <strong>Quản lý tài khoản</strong>
-                <p>Thêm, sửa, khóa hoặc xóa tài khoản người dùng.</p>
-            </a>
-            {% endif %}
-            <a class="action-tile" href="{{ url_for('cameras_page') }}">
-                <strong>Quản lý camera</strong>
-                <p>Khai báo nguồn camera, ROI, vùng cấm đỗ và bật hoặc tắt chức năng detect.</p>
-            </a>
-            <a class="action-tile" href="{{ url_for('test_video_page') }}">
-                <strong>Test bằng video</strong>
-                <p>Upload video hoặc chọn đường dẫn local để kiểm tra luồng phát hiện.</p>
-            </a>
-        </div>
-    </article>
+        <div class="ds-card-value">{{ stats.user_count if stats and stats.user_count else '0' }}</div>
+        <div class="ds-card-bottom" style="opacity: 0.6;"><span class="ds-trend"></span>Tài khoản đăng ký</div>
+    </div>
 
-    <article class="panel">
-        <div class="panel-header">
-            <div>
-                <p class="eyebrow">Camera gần đây</p>
-                <h3>Cấu hình mới cập nhật</h3>
+    <div class="ds-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
+        <div class="ds-card-top">
+            <span class="ds-card-title">Tổng số xe</span>
+            <div class="ds-icon yellow">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
             </div>
         </div>
+        <div class="ds-card-value">{{ stats.total_vehicles if stats and stats.total_vehicles else '0' }}</div>
+        <div class="ds-card-bottom" style="opacity: 0.6;"><span class="ds-trend"></span>Lượt xe ghi nhận được</div>
+    </div>
 
-        {% if stats.recent_cameras %}
-        <div class="camera-list compact-list">
-            {% for camera in stats.recent_cameras %}
-            <article class="camera-mini-card">
-                <div class="camera-mini-head">
-                    <strong>{{ camera.name }}</strong>
-                    <span class="badge {% if camera.is_active %}success{% else %}muted{% endif %}">
-                        {{ 'Đang bật' if camera.is_active else 'Tắt' }}
-                    </span>
-                </div>
-                <p class="muted small">{{ camera.stream_source or 'Chưa có nguồn camera' }}</p>
-                <div class="pill-row">
-                    <span class="pill {% if camera.enable_congestion %}teal{% else %}gray{% endif %}">
-                        Tắc nghẽn {{ 'ON' if camera.enable_congestion else 'OFF' }}
-                    </span>
-                    <span class="pill {% if camera.enable_illegal_parking %}orange{% else %}gray{% endif %}">
-                        Đỗ sai {{ 'ON' if camera.enable_illegal_parking else 'OFF' }}
-                    </span>
-                    <span class="pill {% if camera.enable_license_plate %}teal{% else %}gray{% endif %}">
-                        Biển số {{ 'ON' if camera.enable_license_plate else 'OFF' }}
-                    </span>
-                </div>
-            </article>
-            {% endfor %}
+    <div class="ds-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
+        <div class="ds-card-top">
+            <span class="ds-card-title">Xe đỗ sai</span>
+            <div class="ds-icon orange">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            </div>
         </div>
-        {% else %}
-        <div class="empty-state">
-            <h3>Chưa có camera nào</h3>
-            <p>Thêm camera đầu tiên để bắt đầu cấu hình hiển thị và phát hiện.</p>
+        <div class="ds-card-value">{{ stats.parking_violations|length if stats and stats.parking_violations else '0' }}</div>
+        <div class="ds-card-bottom" style="opacity: 0.6;"><span class="ds-trend" style="color: #E74C3C;">!</span> Cảnh báo vi phạm</div>
+    </div>
+
+    <div class="ds-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
+        <div class="ds-card-top">
+            <span class="ds-card-title">Tắc nghẽn</span>
+            <div class="ds-icon green">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+            </div>
         </div>
-        {% endif %}
-    </article>
+        <div class="ds-card-value">{{ stats.congestion_count if stats and stats.congestion_count else '0' }}</div>
+        <div class="ds-card-bottom" style="opacity: 0.6;"><span class="ds-trend"></span>Tần thuất cảnh báo</div>
+    </div>
 </section>
+
+<!-- Chart Area -->
+<section class="ds-chart-card">
+    <div class="ds-chart-header">
+        <h3 class="ds-chart-title">Thống kê lưu lượng xe</h3>
+        <select class="ds-chart-select"><option>Tháng này</option><option>Tháng trước</option></select>
+    </div>
+    <div style="position: relative; height: 350px; width: 100%;">
+        <canvas id="vehicleChart"></canvas>
+    </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const ctx = document.getElementById('vehicleChart').getContext('2d');
+    
+    // Create gradient
+    let gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(67, 121, 238, 0.2)');   
+    gradient.addColorStop(1, 'rgba(67, 121, 238, 0)');
+
+    // Generate Date Labels for the month
+    const currentDate = new Date();
+    const daysInMonth = 30; // Approximation for mock data
+    const labels = Array.from({length: daysInMonth}, (_, i) => {
+        return `${(i + 1).toString().padStart(2, '0')}/${(currentDate.getMonth() + 1).toString().padStart(2, '0')}`;
+    });
+
+    // Mock Data points (Vehicle counts)
+    const dataPoints = [
+        1250, 1420, 1380, 1550, 1800, 2100, 1950, 
+        1320, 1450, 1500, 1620, 1900, 2250, 2010,
+        1400, 1520, 1600, 1750, 2050, 2400, 2150,
+        1480, 1600, 1650, 1820, 2150, 2500, 2200,
+        1550, 1680
+    ];
+    
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Lượt xe',
+                data: dataPoints,
+                borderColor: '#4379EE',
+                borderWidth: 2,
+                backgroundColor: gradient,
+                fill: true,
+                pointBackgroundColor: '#4379EE',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: function(context) {
+                    const index = context.dataIndex;
+                    // Show dots every 3 days or for weekends (peaks)
+                    return (index % 3 === 0 || dataPoints[index] > 2100) ? 4 : 0;
+                },
+                pointHoverRadius: 6,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#4379EE',
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    padding: 10,
+                    cornerRadius: 4,
+                    displayColors: false,
+                    callbacks: {
+                        label: function(context) {
+                            return context.raw.toLocaleString() + " lượt xe";
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: '#9CA3AF',
+                        font: { size: 11 },
+                        maxTicksLimit: 10, // Avoid too many labels on x-axis
+                        maxRotation: 0
+                    }
+                },
+                y: {
+                    grid: {
+                        color: '#F3F4F6',
+                        drawBorder: false
+                    },
+                    border: { display: false },
+                    ticks: {
+                        color: '#9CA3AF',
+                        font: { size: 12 },
+                        stepSize: 500
+                    },
+                    suggestedMin: 0,
+                    suggestedMax: 3000
+                }
+            }
+        }
+    });
+});
+</script>
 {% endblock %}
