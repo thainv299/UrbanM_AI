@@ -19,6 +19,7 @@ from modules.traffic.traffic_monitor import TrafficMonitor
 from modules.ocr.ocr_manager import OCRManager
 from modules.utils.alpr_logger import ALPRLogger
 from modules.utils.traffic_alert_manager import TrafficAlertManager
+from modules.utils.interactive_telegram_bot import start_bot_thread
 from database.sqlite_db import (
     log_passed_vehicle,
     log_congestion,
@@ -128,13 +129,13 @@ def _load_model(model_path: Path) -> YOLO:
 
     pass
 
-
 def process_video(
     input_stream: Any = None,
     input_path: str = None,
     input_ext: str = None,
     settings: Dict[str, Any] = None,
-    progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    progress_callback: Callable[[Dict[str, Any]], None] = None,
+    pause_event: threading.Event = None,
 ) -> Dict[str, Any]:
     """
     Xử lý video. Hỗ trợ luồng stream trực tiếp hoặc đường dẫn file truyền thống.
@@ -213,6 +214,17 @@ def process_video(
     parking_manager.move_thr_px = move_threshold_px
     parking_manager.setup_detection(fps)
     
+    # Đồng bộ cấu hình Telegram từ môi trường giống main.py
+    import os
+    parking_manager.telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    parking_manager.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    
+    # Khởi động luồng Bot chờ lệnh (Nếu chưa chạy) để nhận nút bấm Xác nhận
+    try:
+        start_bot_thread(traffic_alert_manager)
+    except Exception as e:
+        print(f"[Telegram] Không khởi động được polling thread: {e}")
+    
     camera_id = int(settings.get("camera_id", 0))  # Sử dụng camera_id từ settings hoặc mặc định là 0
     logged_vehicle_ids = set() # Các xe đã ghi nhận đi qua
     last_db_traffic_level = 0 # Mức độ ùn tắc cuối cùng đã lưu DB
@@ -236,7 +248,33 @@ def process_video(
         ocr_manager.start_worker()
 
     try:
-        while True:
+        while capture.isOpened():
+            # Kiểm tra trạng thái Tạm dừng (Pause)
+            if pause_event and pause_event.is_set():
+                if progress_callback is not None:
+                    # Tạo bản sao frame để vẽ overlay "PAUSED" mà không làm hỏng frame gốc
+                    pause_frame = frame.copy() if 'frame' in locals() else np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
+                    cv2.rectangle(pause_frame, (frame_width//2 - 150, frame_height//2 - 50), 
+                                 (frame_width//2 + 150, frame_height//2 + 50), (0, 0, 0), -1)
+                    cv2.putText(pause_frame, "TẠM DỪNG", (frame_width//2 - 100, frame_height//2 + 15), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+                    
+                    progress_callback(
+                        {
+                            "phase": "running_detection",
+                            "processed_frames": frame_index,
+                            "source_total_frames": total_frames,
+                            "progress_percent": round((frame_index / total_frames) * 100, 2)
+                            if total_frames
+                            else None,
+                            "elapsed_seconds": round(time.time() - started_at, 1),
+                            "latest_status": "Đang tạm dừng quá trình phân tích...",
+                            "preview_jpeg": _encode_preview_frame(pause_frame),
+                        }
+                    )
+                time.sleep(0.5)
+                continue
+
             frame_start_time = time.time()
             success, frame = capture.read()
             if not success:
@@ -424,29 +462,7 @@ def process_video(
                     else plate_status
                 )
 
-            feature_text = (
-                f"Tắc nghẽn: {'Bật' if enable_congestion else 'Tắt'} | "
-                f"Đỗ xe sai: {'Bật' if enable_illegal_parking else 'Tắt'} | "
-                f"Biển số: {'Bật' if enable_license_plate else 'Tắt'}"
-            )
-            cv2.putText(
-                frame,
-                feature_text,
-                (30, frame_height - 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (255, 255, 255),
-                2,
-            )
-            cv2.putText(
-                frame,
-                f"Frame: {frame_index}",
-                (30, frame_height - 60),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 255),
-                2,
-            )
+            # Xóa các thông báo feature_text và frame_index không cần thiết theo yêu cầu người dùng
 
             # Luôn gửi frame preview để stream MJPEG mượt mà, đồng bộ với xử lý
             if progress_callback is not None:
@@ -551,12 +567,14 @@ class YoloDetectionService(DetectionInterface):
         input_ext: str = None,
         settings: Dict[str, Any] = None,
         progress_callback: Callable[[Dict[str, Any]], None] = None,
+        pause_event: Any = None
     ) -> Dict[str, Any]:
         return process_video(
             input_stream=input_stream,
             input_path=input_path,
             input_ext=input_ext,
             settings=settings,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            pause_event=pause_event
         )
 

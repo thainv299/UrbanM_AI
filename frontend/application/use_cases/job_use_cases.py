@@ -17,6 +17,7 @@ class JobUseCases:
         self.executor = ThreadPoolExecutor(max_workers=1)
         self.job_lock = threading.Lock()
         self.jobs: Dict[str, Job] = {}
+        self.pause_events: Dict[str, threading.Event] = {}
 
     def set_job(self, job_id: str, **updates: Any) -> Job:
         with self.job_lock:
@@ -44,6 +45,29 @@ class JobUseCases:
             if item.id == job_id and item.status == "queued":
                 return index
         return None
+
+    def pause_job(self, job_id: str) -> bool:
+        with self.job_lock:
+            job = self.jobs.get(job_id)
+            if job and job.status == "running":
+                job.is_paused = True
+                job.message = "Đang tạm dừng quá trình phân tích..."
+                if job_id not in self.pause_events:
+                    self.pause_events[job_id] = threading.Event()
+                self.pause_events[job_id].set() # Signal pause
+                return True
+        return False
+
+    def resume_job(self, job_id: str) -> bool:
+        with self.job_lock:
+            job = self.jobs.get(job_id)
+            if job and job.status == "running":
+                job.is_paused = False
+                job.message = "Đang tiếp tục phân tích..."
+                if job_id in self.pause_events:
+                    self.pause_events[job_id].clear() # Signal resume
+                return True
+        return False
 
     def run_detection_job(
         self,
@@ -77,7 +101,7 @@ class JobUseCases:
             elif phase == "finalizing_output":
                 message = "Đang hoàn tất video kết quả..."
             elif processed_frames is not None:
-                total_text = total_frames if total_frames else "?"
+                total_text = total_frames if total_frames else "..."
                 if percent is None:
                     message = f"Đang xử lý {processed_frames}/{total_text} frame..."
                 else:
@@ -116,6 +140,7 @@ class JobUseCases:
                 input_ext=input_ext,
                 settings=detection_settings,
                 progress_callback=handle_progress,
+                pause_event=self.pause_events.get(job_id)
             )
             
             # Lưu biển số được phát hiện vào database
@@ -145,6 +170,9 @@ class JobUseCases:
                     "latest_status": summary.get("latest_status"),
                 },
             )
+            # Cleanup pause event
+            with self.job_lock:
+                self.pause_events.pop(job_id, None)
         except Exception as exc:
             self.set_job(
                 job_id,
@@ -155,6 +183,9 @@ class JobUseCases:
                 output_filename=None,
                 finished_at=time.time(),
             )
+            # Cleanup pause event
+            with self.job_lock:
+                self.pause_events.pop(job_id, None)
 
     def submit_job(self, job_id: str, input_stream: Any, input_ext: str, settings: Dict[str, Any]) -> Job:
         submitted_at = time.time()

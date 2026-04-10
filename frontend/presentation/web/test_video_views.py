@@ -196,7 +196,6 @@ async def api_create_test_job(
 
     return JSONResponse(status_code=202, content={"ok": True, "job": payload})
 
-
 @test_video_router.get("/api/test-jobs/{job_id}")
 async def api_get_test_job(request: Request, job_id: str, user=Depends(login_required)):
     if isinstance(user, RedirectResponse):
@@ -210,6 +209,24 @@ async def api_get_test_job(request: Request, job_id: str, user=Depends(login_req
     payload["queue_position"] = container.job_use_cases.get_queue_position(job.id)
 
     return {"ok": True, "job": payload}
+@test_video_router.post("/api/test-jobs/{job_id}/pause")
+async def api_pause_test_job(job_id: str, user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+    success = container.job_use_cases.pause_job(job_id)
+    if not success:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "Không thể tạm dừng job này."})
+    return {"ok": True, "message": "Đã tạm dừng quá trình phân tích."}
+
+
+@test_video_router.post("/api/test-jobs/{job_id}/resume")
+async def api_resume_test_job(job_id: str, user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+    success = container.job_use_cases.resume_job(job_id)
+    if not success:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "Không thể tiếp tục job này."})
+    return {"ok": True, "message": "Đã tiếp tục quá trình phân tích."}
 
 
 @test_video_router.get("/api/test-jobs/{job_id}/stream", name="test_video.serve_test_job_stream")

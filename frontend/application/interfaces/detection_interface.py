@@ -6,10 +6,12 @@ class DetectionInterface(ABC):
     @abstractmethod
     def process_video(
         self,
-        input_path: str,
-        output_path: str,
-        settings: Dict[str, Any],
-        progress_callback: Callable[[Dict[str, Any]], None],
+        input_stream: Any = None,
+        input_path: str = None,
+        input_ext: str = None,
+        settings: Dict[str, Any] = None,
+        progress_callback: Callable[[Dict[str, Any]], None] = None,
+        pause_event: Any = None,
     ) -> Dict[str, Any]:
-        """Xử lý video và gọi progress_callback mỗi khi cập nhật"""
+        """Xử lý video và gọi progress_callback mỗi khi cập nhật, hỗ trợ tạm dừng"""
         pass

@@ -16,6 +16,7 @@ class Job:
     summary: Optional[Dict[str, Any]] = None
     progress: Dict[str, Any] = field(default_factory=dict)
     latest_frame: Optional[bytes] = None
+    is_paused: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -30,4 +31,5 @@ class Job:
             "finished_at": self.finished_at,
             "summary": self.summary,
             "progress": self.progress,
+            "is_paused": self.is_paused,
         }
