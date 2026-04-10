@@ -5,8 +5,9 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 
 load_dotenv()
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8734868146:AAFJ2G2dGU2r0aJANRRtzos2N8oDurIx_7E")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "5501282225")
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "YOUR_CHAT_ID_HERE")
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 alert_manager_ref = None
