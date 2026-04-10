@@ -1,6 +1,7 @@
 import uuid
 import time
 import asyncio
+from io import BytesIO
 from pathlib import Path
 from fastapi import APIRouter, Request, Depends, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, Response, StreamingResponse
@@ -19,23 +20,6 @@ from services.job_manager import (
 
 
 router = APIRouter()
-
-@router.get("/results/{filename}")
-def serve_result_video(filename: str, user=Depends(require_login)):
-    file_path = OUTPUTS_DIR / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404)
-    return FileResponse(file_path)
-
-@router.get("/job-sources/{job_id}")
-def serve_test_job_source(job_id: str, user=Depends(require_login)):
-    job = get_job(job_id)
-    if not job or not job.get("source_video"):
-        raise HTTPException(status_code=404)
-    source_path = Path(job["source_video"])
-    if not source_path.exists() or source_path.suffix.lower() not in ALLOWED_VIDEO_EXTENSIONS:
-        raise HTTPException(status_code=404)
-    return FileResponse(source_path)
 
 async def stream_job(job_id: str):
     """MJPEG stream generator. Khi client ngat ket noi, finally block se abort job."""
@@ -82,8 +66,8 @@ async def api_create_test_job(request: Request, user=Depends(require_login)):
             return json_error("Camera duoc chon khong ton tai.", 404)
 
     upload_file = form.get("video_file")
-    
-    # Kiem tra duck-typing vi UploadFile co the den tu starlette.datastructures hoac fastapi.UploadFile 
+
+    # Kiem tra duck-typing vi UploadFile co the den tu starlette.datastructures hoac fastapi.UploadFile
     # tuoc do gay loi isinstance
     is_valid_file = upload_file is not None and hasattr(upload_file, "filename") and hasattr(upload_file, "read")
 
@@ -91,20 +75,17 @@ async def api_create_test_job(request: Request, user=Depends(require_login)):
         extension = Path(upload_file.filename).suffix.lower()
         if extension not in ALLOWED_VIDEO_EXTENSIONS:
             return json_error("Dinh dang video khong duoc ho tro.", 400)
-        safe_name = secure_filename(upload_file.filename)
-        input_path = INPUTS_DIR / f"{job_id}_{safe_name}"
-        with open(input_path, "wb") as buffer:
-            while True:
-                chunk = await upload_file.read(8192)
-                if not chunk:
-                    break
-                buffer.write(chunk)
+
+        # Read video bytes into memory (BytesIO) - NO FILE SAVE
+        file_bytes = await upload_file.read()
+        video_stream = BytesIO(file_bytes)
     else:
         return json_error("Hay chon file upload hop le.", 400)
 
     try:
         form_data = {k: v for k, v in form.multi_items()}
         test_settings = build_test_settings(form_data, camera)
+        test_settings["camera_id"] = camera["id"] if camera else 0
     except ValueError as exc:
         return json_error(str(exc), 400)
 
@@ -117,7 +98,7 @@ async def api_create_test_job(request: Request, user=Depends(require_login)):
         error=None,
         output_filename=None,
         summary=None,
-        source_video=str(input_path),
+        source_video=None,  # No local file path
         submitted_at=submitted_at,
         progress={
             "phase": "queued",
@@ -128,11 +109,13 @@ async def api_create_test_job(request: Request, user=Depends(require_login)):
             "latest_status": "Dang cho den luot xu ly...",
         },
     )
-    
+
+    # Pass BytesIO stream instead of file path
     executor.submit(
         run_detection_job,
         job_id,
-        str(input_path),
+        video_stream,
+        extension,
         output_filename,
         test_settings,
     )
@@ -145,3 +128,13 @@ def api_get_test_job(job_id: str, user=Depends(require_login)):
     if job is None:
         return json_error("Không tìm thấy job kiểm tra.", 404)
     return {"ok": True, "job": public_job(job)}
+
+@router.post("/api/test-jobs/{job_id}/stop")
+def api_stop_test_job(job_id: str, user=Depends(require_login)):
+    job = get_job(job_id)
+    if job is None:
+        return json_error("Không tìm thấy job kiểm tra.", 404)
+    if job.get("status") in ("queued", "running"):
+        set_job(job_id, status="aborted", message="Đang dừng job...")
+        return {"ok": True, "message": "Đã gửi yêu cầu dừng job."}
+    return json_error(f"Không thể dừng job ở trạng thái {job.get('status')}", 400)

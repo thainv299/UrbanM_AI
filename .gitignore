@@ -1,3 +1,24 @@
+models/yolo26l.pt
+models/yolo26m.pt
+models/yolo26s.pt
+models/yolo26n.pt
+models/yolo26x.pt
+videos/*
+layouts/*
+Dataset/*
+models/*.engine
+models/*.onnx
+docs/**/*.pt
+__pycache__/*
+outputs/*
+modules/*/__pycache__
+*/__pycache__
+modules/*/__init__.py
+modules/__init__.py
+logs/*
+.env
+docs/*
+=======
 # ==================================
 # Python Standard
 # ==================================
@@ -100,3 +121,4 @@ logs/
 # ==================================
 modules/__init__.py
 modules/*/__init__.py
+runtime/*

@@ -23,4 +23,4 @@ if __name__ == "__main__":
 
     # Start the FastAPI server on the main thread
     # Port 5000 is used to ensure the frontend cookie or existing bookmarks still work
-    uvicorn.run("main_api:app", host="0.0.0.0", port=5000, reload=False)
+    uvicorn.run("frontend.app:app", host="0.0.0.0", port=5000, reload=False)

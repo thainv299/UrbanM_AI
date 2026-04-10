@@ -18,10 +18,6 @@ document.addEventListener("DOMContentLoaded", () => {
         description: document.getElementById("description"),
         roiPoints: document.getElementById("roi_points"),
         noParkingPoints: document.getElementById("no_parking_points"),
-        roiFilePicker: document.getElementById("roi_file_picker"),
-        roiStatus: document.getElementById("roi_points_status"),
-        noParkingFilePicker: document.getElementById("no_parking_file_picker"),
-        noParkingStatus: document.getElementById("no_parking_points_status"),
         enableCongestion: document.getElementById("enable_congestion"),
         enableIllegalParking: document.getElementById("enable_illegal_parking"),
         enableLicensePlate: document.getElementById("enable_license_plate"),
@@ -38,15 +34,8 @@ document.addEventListener("DOMContentLoaded", () => {
         fields.name.value = camera?.name || "";
         fields.streamSource.value = camera?.stream_source || "";
         fields.description.value = camera?.description || "";
-        
-        fields.roiPoints.value = camera?.roi_points ? JSON.stringify(camera.roi_points) : "";
-        fields.roiFilePicker.value = "";
-        fields.roiStatus.textContent = camera?.roi_points ? "Đã có dữ liệu từ trước." : "Chưa có dữ liệu.";
-        
-        fields.noParkingPoints.value = camera?.no_parking_points ? JSON.stringify(camera.no_parking_points) : "";
-        fields.noParkingFilePicker.value = "";
-        fields.noParkingStatus.textContent = camera?.no_parking_points ? "Đã có dữ liệu từ trước." : "Chưa có dữ liệu.";
-
+        fields.roiPoints.value = camera?.roi_points ? JSON.stringify(camera.roi_points, null, 2) : "";
+        fields.noParkingPoints.value = camera?.no_parking_points ? JSON.stringify(camera.no_parking_points, null, 2) : "";
         fields.enableCongestion.checked = camera ? Boolean(camera.enable_congestion) : true;
         fields.enableIllegalParking.checked = camera ? Boolean(camera.enable_illegal_parking) : true;
         fields.enableLicensePlate.checked = camera ? Boolean(camera.enable_license_plate) : true;
@@ -54,55 +43,12 @@ document.addEventListener("DOMContentLoaded", () => {
         formTitle.textContent = camera ? `Cập nhật camera #${camera.id}` : "Thêm camera mới";
     }
 
-    function handleFileSelect(fileInput, hiddenInput, statusSpan) {
-        fileInput.addEventListener("change", (event) => {
-            const file = event.target.files[0];
-            if (!file) {
-                hiddenInput.value = "";
-                statusSpan.textContent = "Chưa có dữ liệu.";
-                return;
-            }
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    let parsed = JSON.parse(e.target.result);
-                    
-                    // Support layout JSON format from main.py {"points": [...]}
-                    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && Array.isArray(parsed.points)) {
-                        parsed = parsed.points;
-                    }
-
-                    if (!Array.isArray(parsed) || parsed.length < 3) {
-                        throw new Error("Dữ liệu JSON phải là mảng tọa độ chứa ít nhất 3 điểm.");
-                    }
-                    hiddenInput.value = JSON.stringify(parsed);
-                    statusSpan.textContent = "Đã tải file thành công.";
-                    statusSpan.style.color = "var(--color-primary, teal)";
-                } catch (error) {
-                    fileInput.value = "";
-                    hiddenInput.value = "";
-                    statusSpan.textContent = "Lỗi file không đúng chuẩn JSON Polygon.";
-                    statusSpan.style.color = "var(--color-danger, red)";
-                }
-            };
-            reader.readAsText(file);
-        });
-    }
-
-    if (fields.roiFilePicker && fields.roiPoints && fields.roiStatus) {
-        handleFileSelect(fields.roiFilePicker, fields.roiPoints, fields.roiStatus);
-    }
-    if (fields.noParkingFilePicker && fields.noParkingPoints && fields.noParkingStatus) {
-        handleFileSelect(fields.noParkingFilePicker, fields.noParkingPoints, fields.noParkingStatus);
-    }
-
-
     function formatDetection(camera) {
         return `
-            <div class="pill-row">
-                <span class="pill ${camera.enable_congestion ? "teal" : "gray"}">Tac nghen ${window.portalApi.pillText(camera.enable_congestion, "ON", "OFF")}</span>
-                <span class="pill ${camera.enable_illegal_parking ? "orange" : "gray"}">Do sai ${window.portalApi.pillText(camera.enable_illegal_parking, "ON", "OFF")}</span>
-                <span class="pill ${camera.enable_license_plate ? "teal" : "gray"}">Bien so ${window.portalApi.pillText(camera.enable_license_plate, "ON", "OFF")}</span>
+            <div class="pill-row" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <span class="pill ${camera.enable_congestion ? "teal" : "gray"}">Tắc nghẽn ${window.portalApi.pillText(camera.enable_congestion, "BẬT", "TẮT")}</span>
+                <span class="pill ${camera.enable_illegal_parking ? "orange" : "gray"}">Đỗ sai ${window.portalApi.pillText(camera.enable_illegal_parking, "BẬT", "TẮT")}</span>
+                <span class="pill ${camera.enable_license_plate ? "teal" : "gray"}">Biển số ${window.portalApi.pillText(camera.enable_license_plate, "BẬT", "TẮT")}</span>
             </div>
         `;
     }
@@ -112,10 +58,10 @@ document.addEventListener("DOMContentLoaded", () => {
             tableBody.innerHTML = `
                 <tr>
                     <td colspan="5">
-                        <div class="empty-state">
+                        <div class="empty-state centered-panel">
                             <div>
-                                <h3>Chua co camera nao</h3>
-                                <p class="muted">Them camera de hien thi preview va cau hinh detect.</p>
+                                <h3 class="muted">Chưa có camera nào</h3>
+                                <p class="muted">Thêm camera để hiển thị preview và cấu hình phát hiện.</p>
                             </div>
                         </div>
                     </td>
@@ -127,13 +73,13 @@ document.addEventListener("DOMContentLoaded", () => {
         tableBody.innerHTML = state.cameras.map((camera) => `
             <tr>
                 <td><strong>${camera.name}</strong></td>
-                <td>${camera.stream_source || "Chua co nguon"}</td>
+                <td><code class="small">${camera.stream_source || "Chưa có nguồn"}</code></td>
                 <td>${formatDetection(camera)}</td>
-                <td><span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "Dang bat" : "Dang tat"}</span></td>
+                <td><span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "Hoạt động" : "Ngoại tuyến"}</span></td>
                 <td>
-                    <div class="button-row">
-                        <button class="button secondary tiny" data-action="edit" data-id="${camera.id}">Sua</button>
-                        <button class="button danger tiny" data-action="delete" data-id="${camera.id}">Xoa</button>
+                    <div class="button-row" style="display: flex; gap: 8px;">
+                        <button class="button secondary tiny" data-action="edit" data-id="${camera.id}">Sửa</button>
+                        <button class="button danger tiny" data-action="delete" data-id="${camera.id}" style="background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2);">Xóa</button>
                     </div>
                 </td>
             </tr>
@@ -143,10 +89,10 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderPreviewGrid() {
         if (!state.cameras.length) {
             previewGrid.innerHTML = `
-                <div class="empty-state panel full-span">
+                <div class="empty-state panel full-span centered-panel">
                     <div>
-                        <h3>Chua co camera de hien thi</h3>
-                        <p class="muted">Sau khi them camera, anh preview se duoc lam moi tu dong.</p>
+                        <h3 class="muted">Chưa có camera để hiển thị</h3>
+                        <p class="muted">Sau khi thêm camera, ảnh preview sẽ được làm mới tự động.</p>
                     </div>
                 </div>
             `;
@@ -155,24 +101,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
         previewGrid.innerHTML = state.cameras.map((camera) => `
             <article class="camera-preview-card">
-                <img
-                    src="/api/cameras/${camera.id}/snapshot?ts=${Date.now()}"
-                    alt="Preview ${camera.name}"
-                    class="camera-preview-image"
-                    data-camera-id="${camera.id}"
-                >
+                <div class="preview-container" style="position: relative;">
+                    <img
+                        src="/api/cameras/${camera.id}/snapshot?ts=${Date.now()}"
+                        alt="Preview ${camera.name}"
+                        class="camera-preview-image"
+                        data-camera-id="${camera.id}"
+                    >
+                    <div class="status-overlay" style="position: absolute; top: 12px; right: 12px;">
+                        <span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "LIVE" : "OFFLINE"}</span>
+                    </div>
+                </div>
                 <div class="camera-body">
                     <div class="camera-mini-head">
-                        <strong>${camera.name}</strong>
-                        <span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "Dang bat" : "Tat"}</span>
+                        <h3>${camera.name}</h3>
                     </div>
-                    <p class="muted small">${camera.stream_source || "Chua cau hinh nguon camera"}</p>
+                    <p class="muted small" style="margin-bottom: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Source: ${camera.stream_source || "Chưa cấu hình"}</p>
+                    
                     ${formatDetection(camera)}
-                    <div class="preview-actions">
-                        <button class="button secondary tiny" data-action="toggle-congestion" data-id="${camera.id}">Bat hoac tat tac nghen</button>
-                        <button class="button secondary tiny" data-action="toggle-parking" data-id="${camera.id}">Bat hoac tat do sai</button>
-                        <button class="button secondary tiny" data-action="toggle-license-plate" data-id="${camera.id}">Bat hoac tat bien so</button>
-                        <button class="button secondary tiny" data-action="toggle-active" data-id="${camera.id}">Bat hoac tat camera</button>
+                    
+                    <div class="preview-actions" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px;">
+                        <button class="button secondary tiny" data-action="toggle-congestion" data-id="${camera.id}">Tắc nghẽn</button>
+                        <button class="button secondary tiny" data-action="toggle-parking" data-id="${camera.id}">Đỗ sai</button>
+                        <button class="button secondary tiny" data-action="toggle-license-plate" data-id="${camera.id}">Biển số</button>
+                        <button class="button secondary tiny" data-action="toggle-active" data-id="${camera.id}">Bật/Tắt Cam</button>
                     </div>
                 </div>
             </article>

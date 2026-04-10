@@ -1,30 +1,32 @@
 {% extends "base.html" %}
 
-{% block title %}Test Video | Crow Detection Portal{% endblock %}
+{% block title %}Kiểm tra Video | CityVision AI Portal{% endblock %}
 
 {% block content %}
-<section class="page-head">
+<div class="page-head">
     <div>
-        <p class="eyebrow">Kiểm tra chức năng</p>
-        <h2>Test bằng video</h2>
-        <p class="muted">Upload video hoặc dùng đường dẫn local để tạo video kết quả và kiểm tra tắc nghẽn, đỗ xe sai quy định.</p>
+        <p class="eyebrow">Phân tích Dữ liệu</p>
+        <h2 class="page-title">Kiểm tra Video với AI</h2>
+        <p class="muted">Tải lên video hoặc cung cấp đường dẫn tệp tin để chạy các thuật toán nhận diện tắc nghẽn và vi
+            phạm.</p>
     </div>
-</section>
+</div>
 
-<div class="split-layout two-columns wide-gap">
+<div class="split-layout two-columns">
+    <!-- Config form -->
     <section class="panel">
         <div class="panel-header">
             <div>
-                <p class="eyebrow">Cấu hình job</p>
-                <h3>Gửi video để kiểm tra</h3>
+                <p class="eyebrow">Đầu vào</p>
+                <h3>Cấu hình Tiến trình</h3>
             </div>
         </div>
 
-        <form id="test-video-form" class="form-grid" enctype="multipart/form-data">
+        <form id="test-video-form" enctype="multipart/form-data" style="display: grid; gap: 16px;">
             <label class="field">
-                <span>Chọn camera cấu hình sẵn</span>
+                <span>Chọn Cấu hình Camera (Tùy chọn)</span>
                 <select name="camera_id" id="camera_id_select">
-                    <option value="">Không dùng cấu hình camera</option>
+                    <option value="">-- Không sử dụng cấu hình --</option>
                     {% for camera in cameras %}
                     <option value="{{ camera.id }}">{{ camera.name }}</option>
                     {% endfor %}
@@ -32,130 +34,122 @@
             </label>
 
             <label class="field">
-                <span>Model YOLO</span>
-                <input type="text" name="model_path" value="{{ default_model_path }}">
+                <span>Đường dẫn Model YOLO</span>
+                <input type="text" name="model_path" value="{{ default_model_path }}"
+                    style="font-family: var(--font-mono); font-size: 0.82rem;">
             </label>
 
             <label class="field">
-                <span>Upload video</span>
-                <input type="file" name="video_file" accept=".mp4,.avi,.mov,.mkv,.mpeg,.mpg" required>
+                <span>Tải lên Tệp Video</span>
+                <input type="file" name="video_file" accept=".mp4,.avi,.mov,.mkv,.mpeg,.mpg">
             </label>
 
             <label class="field">
-                <span>Confidence threshold</span>
-                <input type="number" name="confidence_threshold" min="0.1" max="1" step="0.01" value="0.32">
+                <span>Hoặc Đường dẫn cục bộ (Local)</span>
+                <input type="text" name="local_path" placeholder="D:\Data\video_sample.mp4">
             </label>
 
-            <label class="field">
-                <span>Thời gian dừng vi phạm (giây)</span>
-                <input type="number" name="stop_seconds" min="1" step="1" value="30">
-            </label>
-
-            <label class="field">
-                <span>Ngưỡng di chuyển (px)</span>
-                <input type="number" name="parking_move_threshold_px" min="1" step="1" value="10">
-            </label>
-
-            <label class="field">
-                <span>Xử lý mỗi N frame</span>
-                <input type="number" name="process_every_n_frames" min="1" step="1" value="2">
-            </label>
-
-            <label class="toggle-field">
-                <input type="checkbox" name="enable_congestion" checked>
-                <span>Bật phát hiện tắc nghẽn</span>
-            </label>
-
-            <label class="toggle-field">
-                <input type="checkbox" name="enable_illegal_parking" checked>
-                <span>Bật phát hiện đỗ xe sai quy định</span>
-            </label>
-
-            <label class="toggle-field">
-                <input type="checkbox" name="enable_license_plate" checked>
-                <span>Bật phát hiện biển số</span>
-            </label>
-
-            <div class="field full-span">
-                <span class="label-text">ROI polygon (tùy chọn)</span>
-                <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
-                    <input type="file" id="test_roi_file_picker" accept=".json" style="display: none;">
-                    <button type="button" class="button secondary" onclick="document.getElementById('test_roi_file_picker').click()">Chọn file .json</button>
-                    <span id="test_roi_points_status" class="muted">Nếu để trống sẽ dùng cấu hình camera.</span>
-                </div>
-                <input type="hidden" id="test_roi_points" name="roi_points">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <label class="field">
+                    <span>Ngưỡng Tin cậy (Confidence)</span>
+                    <input type="number" name="confidence_threshold" min="0.1" max="1" step="0.01" value="0.32">
+                </label>
+                <label class="field">
+                    <span>Thời gian dừng Vi phạm (s)</span>
+                    <input type="number" name="stop_seconds" min="1" step="1" value="30">
+                </label>
             </div>
 
-            <div class="field full-span">
-                <span class="label-text">Vùng cấm đỗ (tùy chọn)</span>
-                <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
-                    <input type="file" id="test_no_parking_file_picker" accept=".json" style="display: none;">
-                    <button type="button" class="button secondary" onclick="document.getElementById('test_no_parking_file_picker').click()">Chọn file .json</button>
-                    <span id="test_no_parking_points_status" class="muted">Nếu để trống sẽ dùng cấu hình camera.</span>
-                </div>
-                <input type="hidden" id="test_no_parking_points" name="no_parking_points">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <label class="toggle-field">
+                    <input type="checkbox" name="enable_congestion" checked>
+                    <span>Phát hiện Tắc nghẽn</span>
+                </label>
+                <label class="toggle-field">
+                    <input type="checkbox" name="enable_illegal_parking" checked>
+                    <span>Phát hiện Đỗ xe sai</span>
+                </label>
+                <label class="toggle-field" style="grid-column: 1 / -1;">
+                    <input type="checkbox" name="enable_license_plate" checked>
+                    <span>Nhận diện Biển số xe</span>
+                </label>
             </div>
 
-            <div class="button-row full-span">
-                <button type="submit" class="button primary" id="submit-test-job">Chạy test video</button>
+            <label class="field">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span>Vùng nhận diện ROI (JSON, tùy chọn)</span>
+                    <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="this.nextElementSibling.click()">📁 Chọn file JSON</button>
+                    <input type="file" accept=".json" style="display: none;" onchange="portalApi.readJsonFileToInput(this, 'roi_points')">
+                </div>
+                <textarea name="roi_points" id="roi_points" rows="2" style="font-family: var(--font-mono); font-size: 0.82rem;"
+                    placeholder="Mặc định dùng toàn bộ khung hình"></textarea>
+            </label>
+
+            <label class="field">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span>Vùng cấm đỗ xe (JSON, tùy chọn)</span>
+                    <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="this.nextElementSibling.click()">📁 Chọn file JSON</button>
+                    <input type="file" accept=".json" style="display: none;" onchange="portalApi.readJsonFileToInput(this, 'no_parking_points')">
+                </div>
+                <textarea name="no_parking_points" id="no_parking_points" rows="2" style="font-family: var(--font-mono); font-size: 0.82rem;"
+                    placeholder='VD: [[140,340],[860,340],[860,520],[140,520]]'></textarea>
+            </label>
+
+
+            <div style="display: flex; gap: 8px; margin-top: 4px;">
+                <button type="submit" class="button primary" id="submit-test-job" style="flex: 1;">
+                    🚀 Bắt đầu Phân tích
+                </button>
+                <button type="button" class="button secondary" id="stop-test-job" style="flex: 1; display: none; background-color: var(--color-error, #f44336); color: white; border-color: transparent;">
+                    🛑 Dừng Phân tích
+                </button>
             </div>
         </form>
     </section>
 
+    <!-- Job status -->
     <section class="panel">
         <div class="panel-header">
             <div>
-                <p class="eyebrow">Tiến trình</p>
-                <h3>Trạng thái job</h3>
+                <p class="eyebrow">Trạng thái</p>
+                <h3>Tiến độ Xử lý</h3>
             </div>
         </div>
         <div id="test-job-feedback"></div>
-        <div class="status-stack" id="job-status-panel">
-            <article class="status-card">
-                <span class="pill gray">Sẵn sàng</span>
-                <h4>Chưa có job nào đang chạy</h4>
-                <p class="muted">Sau khi gửi video, portal sẽ xử lý ở backend và trả về video kết quả có overlay detect.</p>
-            </article>
+        <div id="job-status-panel">
+            <div class="empty-state">
+                <span class="empty-icon">📹</span>
+                <p class="muted">Chưa có tiến trình nào đang chạy.</p>
+                <p class="muted tiny">Kết quả sẽ hiển thị tại đây sau khi bạn nhấn bắt đầu.</p>
+            </div>
         </div>
     </section>
 </div>
 
-<section class="panel margin-top" id="viewer-panel" hidden>
+<!-- Result viewer -->
+<section id="viewer-panel" class="panel margin-top" hidden>
     <div class="panel-header">
         <div>
-            <p class="eyebrow">Theo dõi video</p>
-            <h3>Xem nguồn vào, preview phân tích và kết quả</h3>
+            <p class="eyebrow">Kết quả Trực quan</p>
+            <h3>Luồng Phân tích Thời gian thực</h3>
         </div>
     </div>
 
-    <div class="viewer-layout">
-        <article class="viewer-card">
-            <div class="panel-header compact">
-                <div>
-                    <p class="eyebrow">Nguồn vào</p>
-                    <h3>Video gốc</h3>
-                </div>
-            </div>
-            <video id="input-video" class="result-video" controls preload="metadata"></video>
-            <p id="input-video-note" class="muted">Video bạn gửi sẽ xuất hiện ở đây.</p>
-        </article>
+    <article class="panel" style="padding: 20px; margin-bottom: 24px;">
+        <p class="eyebrow" style="margin-bottom: 12px;">Live Stream (MJPEG)</p>
+        <img id="stream-output" class="preview-frame" alt="AI Analysis Stream"
+            style="width: 100%; max-height: 540px; object-fit: contain; background: #000; border-radius: 8px;">
+        <p id="stream-output-note" class="muted small" style="margin-top: 10px;">
+            Luồng stream sẽ bắt đầu khi backend xử lý video.
+        </p>
+    </article>
 
-        <article class="viewer-card viewer-result">
-            <div class="panel-header compact">
-                <div>
-                    <p class="eyebrow">Kết quả phân tích</p>
-                    <h3>Stream trực tiếp từ backend</h3>
-                </div>
-            </div>
-            <img id="stream-output" class="result-video" alt="Stream phân tích video" style="width:100%; background:#111; min-height:300px; object-fit:contain; border-radius:8px;">
-            <p id="stream-output-note" class="muted">Luồng phát trực tiếp sẽ hiển thị khi backend bắt đầu xử lý video.</p>
-        </article>
+    <div id="result-summary"
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 24px;">
     </div>
-
-    <div id="result-summary" class="summary-grid summary-grid-top"></div>
 </section>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/test_video.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/test_video.js') }}"></script>
 {% endblock %}

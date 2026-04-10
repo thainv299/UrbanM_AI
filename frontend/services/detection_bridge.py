@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 import sys
 import time
+import tempfile
+from io import BytesIO
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -180,16 +182,46 @@ class ParkingOverlayMonitor:
 
 
 def process_video(
-    input_path: str,
-    output_path: str,
-    settings: Dict[str, Any],
+    input_stream: Optional[BytesIO] = None,
+    input_path: Optional[str] = None,
+    input_ext: Optional[str] = None,
+    output_path: Optional[str] = None,
+    settings: Optional[Dict[str, Any]] = None,
     progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
-    input_video_path = Path(input_path)
-    output_video_path = Path(output_path)
+    """
+    Process video from stream (BytesIO) OR file path.
 
-    if not input_video_path.exists():
-        raise FileNotFoundError(f"Khong tim thay video dau vao: {input_video_path}")
+    Args:
+        input_stream: BytesIO object containing video bytes (NEW)
+        input_path: Path to video file (OLD, for backward compat)
+        input_ext: File extension (.mp4, .avi, etc.) if using input_stream
+        output_path: Output path (IGNORED - stream only, no file write)
+        settings: Detection settings dict
+        progress_callback: Callback for progress updates
+    """
+    if settings is None:
+        settings = {}
+
+    # Determine input video path for cv2.VideoCapture
+    if input_stream is not None:
+        # Create temp file from BytesIO
+        with tempfile.NamedTemporaryFile(suffix=input_ext or ".mp4", delete=False) as tmp:
+            tmp.write(input_stream.getvalue())
+            temp_path = tmp.name
+        input_video_path = Path(temp_path)
+        should_cleanup_temp = True
+    elif input_path is not None:
+        input_video_path = Path(input_path)
+        should_cleanup_temp = False
+    else:
+        raise ValueError("Either input_stream or input_path must be provided.")
+
+    try:
+        if should_cleanup_temp and not input_video_path.exists():
+            raise FileNotFoundError(f"Temp video file not created properly: {input_video_path}")
+        elif not should_cleanup_temp and not input_video_path.exists():
+            raise FileNotFoundError(f"Khong tim thay video dau vao: {input_video_path}")
 
     model_path = Path(str(settings["model_path"]))
     if not model_path.exists():
@@ -203,37 +235,38 @@ def process_video(
     move_threshold_px = float(settings.get("parking_move_threshold_px", 10.0))
     process_stride = max(1, int(settings.get("process_every_n_frames", 2)))
 
-    capture = cv2.VideoCapture(str(input_video_path))
-    if not capture.isOpened():
-        raise RuntimeError("Khong the mo video de chay kiem tra.")
+    try:
+        capture = cv2.VideoCapture(str(input_video_path))
+        if not capture.isOpened():
+            raise RuntimeError("Khong the mo video de chay kiem tra.")
 
-    fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
-    frame_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
-    frame_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 720)
-    total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
+        frame_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
+        frame_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 720)
+        total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
 
-    roi_points = _normalize_points(settings.get("roi_points")) or _full_frame_polygon(
-        frame_width, frame_height
-    )
-    no_parking_points = _normalize_points(settings.get("no_parking_points"))
-    roi_polygon = _to_polygon(roi_points)
-
-    if roi_polygon is None:
-        raise ValueError("ROI khong hop le.")
-
-    if progress_callback is not None:
-        progress_callback(
-            {
-                "phase": "loading_model",
-                "processed_frames": 0,
-                "source_total_frames": total_frames,
-                "progress_percent": 0.0,
-                "elapsed_seconds": 0.0,
-                "latest_status": "Dang tai model YOLO...",
-            }
+        roi_points = _normalize_points(settings.get("roi_points")) or _full_frame_polygon(
+            frame_width, frame_height
         )
+        no_parking_points = _normalize_points(settings.get("no_parking_points"))
+        roi_polygon = _to_polygon(roi_points)
 
-    model = _load_model(model_path)
+        if roi_polygon is None:
+            raise ValueError("ROI khong hop le.")
+
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "phase": "loading_model",
+                    "processed_frames": 0,
+                    "source_total_frames": total_frames,
+                    "progress_percent": 0.0,
+                    "elapsed_seconds": 0.0,
+                    "latest_status": "Dang tai model YOLO...",
+                }
+            )
+
+        model = _load_model(model_path)
     traffic_monitor = TrafficMonitor(roi_polygon=roi_polygon) if enable_congestion else None
     parking_monitor = (
         ParkingOverlayMonitor(
@@ -259,6 +292,9 @@ def process_video(
     congestion_frames = 0
     latest_status = "Dang bat dau phan tich"
     violation_events: List[Dict[str, Any]] = []
+    
+    active_tracks = {}
+    passed_vehicles = []
 
     try:
         while True:
@@ -306,6 +342,13 @@ def process_video(
                     if label in LICENSE_PLATE_LABELS:
                         current_license_plate_count += 1
 
+                    if track_id != -1 and label in VEHICLE_LABELS:
+                        if track_id not in active_tracks:
+                            active_tracks[track_id] = {"label": label, "first_seen": frame_index, "last_seen": frame_index}
+                        else:
+                            active_tracks[track_id]["last_seen"] = frame_index
+                            active_tracks[track_id]["label"] = label
+
                     if label == "person":
                         if traffic_monitor is not None:
                             traffic_monitor.log_person()
@@ -346,6 +389,15 @@ def process_video(
                     )
 
             max_license_plate_count = max(max_license_plate_count, current_license_plate_count)
+
+            for t_id, info in list(active_tracks.items()):
+                if frame_index - info["last_seen"] > process_stride * 10:
+                    passed_vehicles.append({
+                        "track_id": t_id,
+                        "label": info["label"],
+                        "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())
+                    })
+                    del active_tracks[t_id]
 
             cv2.polylines(frame, [roi_polygon], True, (255, 0, 0), 2)
             if parking_monitor is not None:
@@ -438,6 +490,12 @@ def process_video(
                 )
     finally:
         capture.release()
+        for t_id, info in list(active_tracks.items()):
+            passed_vehicles.append({
+                "track_id": t_id,
+                "label": info["label"],
+                "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())
+            })
 
     processing_seconds = max(0.001, time.time() - started_at)
     parking_violation_ids = (
@@ -458,7 +516,7 @@ def process_video(
 
     return {
         "input_path": str(input_video_path),
-        "output_path": str(output_video_path),
+        "output_path": None,  # No local file output
         "processed_frames": frame_index,
         "source_total_frames": total_frames,
         "duration_seconds": round(frame_index / fps, 2) if fps else 0.0,
@@ -481,4 +539,11 @@ def process_video(
             "enable_license_plate": enable_license_plate,
         },
         "violation_events": violation_events[:20],
+        "passed_vehicles": passed_vehicles,
     }
+    finally:
+        if should_cleanup_temp and input_video_path.exists():
+            try:
+                os.unlink(input_video_path)
+            except Exception:
+                pass

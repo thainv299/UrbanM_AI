@@ -5,3 +5,5 @@ pyTelegramBotAPI
 python-dotenv
 requests
 paddleocr
+av
+FastAPI

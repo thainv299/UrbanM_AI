@@ -1,6 +1,8 @@
 
 from ultralytics import YOLO
+
 model = YOLO("models/best.pt")
+
 model.export(
     format="engine",
     half=True,        # FP16 engine

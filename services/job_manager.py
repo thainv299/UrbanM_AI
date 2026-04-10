@@ -1,7 +1,8 @@
 import time
 import sqlite3
+from io import BytesIO
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 
 from core.config import jobs, job_lock, PREVIEWS_DIR, OUTPUTS_DIR
 from frontend.services.detection_bridge import process_video
@@ -38,16 +39,17 @@ def public_job(job: Dict[str, Any]) -> Dict[str, Any]:
     payload = dict(job)
     # Loai bo latest_frame (bytes) de tranh loi UnicodeDecodeError khi FastAPI serialize JSON
     payload.pop("latest_frame", None)
-    output_filename = payload.get("output_filename")
-    payload["result_url"] = f"/results/{output_filename}" if output_filename else None
-    payload["input_video_url"] = f"/job-sources/{payload['id']}" if payload.get("source_video") else None
+    # No result_url (no output file saved)
+    payload["result_url"] = None
+    # No input_video_url (stream-only, no file storage)
     payload["stream_url"] = f"/api/test-jobs/{payload['id']}/stream"
     payload["queue_position"] = get_queue_position(payload.get("id", ""))
     return payload
 
 def run_detection_job(
     job_id: str,
-    input_path: str,
+    video_stream: Union[BytesIO, str],
+    file_ext: str,
     output_filename: str,
     detection_settings: Dict[str, Any],
 ) -> None:
@@ -108,29 +110,33 @@ def run_detection_job(
     )
 
     try:
+        # Pass stream directly - no output file needed (output_path=None)
         summary = process_video(
-            input_path=input_path,
-            output_path=str(output_path),
+            input_stream=video_stream if isinstance(video_stream, BytesIO) else None,
+            input_path=video_stream if isinstance(video_stream, str) else None,
+            input_ext=file_ext,
+            output_path=None,  # NO OUTPUT FILE
             settings=detection_settings,
             progress_callback=handle_progress,
         )
         if summary:
             try:
-                total_v = summary.get("max_vehicle_count", 0)
-                total_vi = summary.get("parking_violation_count", 0)
+                passed_vehicles = summary.get("passed_vehicles", [])
                 violation_ids = summary.get("parking_violation_ids", [])
+                camera_id = detection_settings.get("camera_id", 0)
 
                 with sqlite3.connect(DB_PATH) as conn:
                     conn.text_factory = str
-                    for i in range(total_v):
+                    for v in passed_vehicles:
+                        b_so = f"XE-{job_id[:4]}-{v.get('track_id', 0)}"
                         conn.execute(
-                            "INSERT INTO vehicle_logs (license_plate, created_at) VALUES (?, datetime('now', 'localtime'))",
-                            (f"XE-{job_id[:4]}-{i+1}",)
+                            "INSERT INTO lich_su_phuong_tien (id_camera, bien_so_xe, loai_xe, thoi_gian_di_qua) VALUES (?, ?, ?, ?)",
+                            (camera_id, b_so, v.get("label", "unknown"), v.get("timestamp"))
                         )
                     for v_id in violation_ids:
                         conn.execute(
-                            "INSERT INTO violations (license_plate, type, created_at) VALUES (?, ?, datetime('now', 'localtime'))",
-                            (f"VP-{v_id}", "Do xe sai quy dinh")
+                            "INSERT INTO vi_pham_do_xe (id_camera, bien_so, thoi_gian_vi_pham, thoi_gian_do_giay, duong_dan_anh) VALUES (?, ?, ?, ?, ?)",
+                            (camera_id, f"VP-{v_id}", time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime()), 0, "")
                         )
                     conn.commit()
             except Exception as e:
@@ -154,11 +160,7 @@ def run_detection_job(
             },
         )
     except Exception as exc:
-        try:
-            if output_path.exists():
-                output_path.unlink()
-        except OSError:
-            pass
+        # No file cleanup needed (no output file saved)
         set_job(
             job_id,
             status="failed",

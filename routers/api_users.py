@@ -11,6 +11,7 @@ from frontend.database import (
     delete_user,
     list_users,
     count_admin_users,
+    count_active_users,
     get_dashboard_stats
 )
 
@@ -50,6 +51,8 @@ def api_update_user(user_id: int, payload: dict, user=Depends(require_admin)):
             user_payload.pop("password_hash", None)
         if existing["role"] == "admin" and user_payload["role"] != "admin" and count_admin_users() <= 1:
             return json_error("Cần giữ lại ít nhất một tài khoản admin.", 400)
+        if bool(existing["is_active"]) and not user_payload.get("is_active", True) and count_active_users() <= 1:
+            return json_error("Cần giữ lại ít nhất một tài khoản đang hoạt động.", 400)
 
         updated = update_user(user_id, user_payload)
         if updated is None:
