@@ -1,7 +1,8 @@
 import time
 import sqlite3
+from io import BytesIO
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 
 from core.config import jobs, job_lock, PREVIEWS_DIR, OUTPUTS_DIR
 from frontend.services.detection_bridge import process_video
@@ -38,16 +39,17 @@ def public_job(job: Dict[str, Any]) -> Dict[str, Any]:
     payload = dict(job)
     # Loai bo latest_frame (bytes) de tranh loi UnicodeDecodeError khi FastAPI serialize JSON
     payload.pop("latest_frame", None)
-    output_filename = payload.get("output_filename")
-    payload["result_url"] = f"/results/{output_filename}" if output_filename else None
-    payload["input_video_url"] = f"/job-sources/{payload['id']}" if payload.get("source_video") else None
+    # No result_url (no output file saved)
+    payload["result_url"] = None
+    # No input_video_url (stream-only, no file storage)
     payload["stream_url"] = f"/api/test-jobs/{payload['id']}/stream"
     payload["queue_position"] = get_queue_position(payload.get("id", ""))
     return payload
 
 def run_detection_job(
     job_id: str,
-    input_path: str,
+    video_stream: Union[BytesIO, str],
+    file_ext: str,
     output_filename: str,
     detection_settings: Dict[str, Any],
 ) -> None:
@@ -108,9 +110,12 @@ def run_detection_job(
     )
 
     try:
+        # Pass stream directly - no output file needed (output_path=None)
         summary = process_video(
-            input_path=input_path,
-            output_path=str(output_path),
+            input_stream=video_stream if isinstance(video_stream, BytesIO) else None,
+            input_path=video_stream if isinstance(video_stream, str) else None,
+            input_ext=file_ext,
+            output_path=None,  # NO OUTPUT FILE
             settings=detection_settings,
             progress_callback=handle_progress,
         )
@@ -154,11 +159,7 @@ def run_detection_job(
             },
         )
     except Exception as exc:
-        try:
-            if output_path.exists():
-                output_path.unlink()
-        except OSError:
-            pass
+        # No file cleanup needed (no output file saved)
         set_job(
             job_id,
             status="failed",

@@ -7,8 +7,7 @@
     <div>
         <p class="eyebrow">Kiểm tra chức năng</p>
         <h2>Test bằng video</h2>
-        <p class="muted">Upload video hoặc dùng đường dẫn local để tạo video kết quả và kiểm tra tắc nghẽn, đỗ xe sai
-            quy định.</p>
+        <p class="muted">Upload video để xử lý trực tiếp trên server và xem stream phân tích video real-time. Kiểm tra tắc nghẽn, đỗ xe sai quy định, và phát hiện biển số.</p>
     </div>
 </section>
 
@@ -118,8 +117,7 @@
             <article class="status-card">
                 <span class="pill gray">Sẵn sàng</span>
                 <h4>Chưa có job nào đang chạy</h4>
-                <p class="muted">Sau khi gửi video, portal sẽ xử lý ở backend và trả về video kết quả có overlay detect.
-                </p>
+                <p class="muted">Sau khi gửi video, portal sẽ xử lý ở backend và stream video phân tích trực tiếp với các overlay detection (boxes, track IDs, roiBoundaries).</p>
             </article>
         </div>
     </section>
@@ -128,36 +126,16 @@
 <section class="panel margin-top" id="viewer-panel" hidden>
     <div class="panel-header">
         <div>
-            <p class="eyebrow">Theo dõi video</p>
-            <h3>Xem nguồn vào, preview phân tích và kết quả</h3>
+            <p class="eyebrow">Kết quả phân tích</p>
+            <h3>Xem stream phân tích trực tiếp</h3>
         </div>
     </div>
 
-    <div class="viewer-layout">
-        <article class="viewer-card">
-            <div class="panel-header compact">
-                <div>
-                    <p class="eyebrow">Nguồn vào</p>
-                    <h3>Video gốc</h3>
-                </div>
-            </div>
-            <video id="input-video" class="result-video" controls preload="metadata"></video>
-            <p id="input-video-note" class="muted">Video bạn gửi sẽ xuất hiện ở đây.</p>
-        </article>
-
-        <article class="viewer-card viewer-result">
-            <div class="panel-header compact">
-                <div>
-                    <p class="eyebrow">Kết quả phân tích</p>
-                    <h3>Stream trực tiếp từ backend</h3>
-                </div>
-            </div>
-            <img id="stream-output" class="result-video" alt="Stream phân tích video"
-                style="width:100%; background:#111; min-height:300px; object-fit:contain; border-radius:8px;">
-            <p id="stream-output-note" class="muted">Luồng phát trực tiếp sẽ hiển thị khi backend bắt đầu xử lý video.
-            </p>
-        </article>
-    </div>
+    <article class="viewer-card">
+        <img id="stream-output" class="result-video" alt="Stream phân tích video"
+            style="width:100%; background:#111; min-height:400px; object-fit:contain; border-radius:8px;">
+        <p id="stream-output-note" class="muted">Luồng phát trực tiếp sẽ hiển thị khi backend bắt đầu xử lý video.</p>
+    </article>
 
     <div id="result-summary" class="summary-grid summary-grid-top"></div>
 </section>

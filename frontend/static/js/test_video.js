@@ -3,8 +3,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const feedback = document.getElementById("test-job-feedback");
     const statusPanel = document.getElementById("job-status-panel");
     const viewerPanel = document.getElementById("viewer-panel");
-    const inputVideo = document.getElementById("input-video");
-    const inputVideoNote = document.getElementById("input-video-note");
     const streamOutput = document.getElementById("stream-output");
     const streamOutputNote = document.getElementById("stream-output-note");
     const resultSummary = document.getElementById("result-summary");
@@ -36,7 +34,7 @@ document.addEventListener("DOMContentLoaded", () => {
             reader.onload = (e) => {
                 try {
                     let parsed = JSON.parse(e.target.result);
-                    
+
                     // Support layout JSON format from main.py {"points": [...]}
                     if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && Array.isArray(parsed.points)) {
                         parsed = parsed.points;
@@ -67,43 +65,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     let pollingHandle = null;
-    let currentInputObjectUrl = null;
 
     function stopPolling() {
         if (pollingHandle) {
             clearInterval(pollingHandle);
             pollingHandle = null;
         }
-    }
-
-    function revokeInputPreviewUrl() {
-        if (!currentInputObjectUrl) {
-            return;
-        }
-        URL.revokeObjectURL(currentInputObjectUrl);
-        currentInputObjectUrl = null;
-    }
-
-    function clearVideo(video) {
-        if (!video) {
-            return;
-        }
-        video.pause();
-        video.removeAttribute("src");
-        delete video.dataset.src;
-        video.load();
-    }
-
-    function setVideoSource(video, url) {
-        if (!video || !url) {
-            return;
-        }
-        if (video.dataset.src === url) {
-            return;
-        }
-        video.dataset.src = url;
-        video.src = url;
-        video.load();
     }
 
     function clearStream() {
@@ -159,9 +126,8 @@ document.addEventListener("DOMContentLoaded", () => {
             <article class="status-card">
                 <span class="pill ${badgeClass}">${job.status || "Khong ro"}</span>
                 <h4>${job.message || "Dang doi trang thai"}</h4>
-                <p class="muted">Job ID: ${job.id || "-"}</p>
                 ${queueText ? `<p class="muted">${queueText}</p>` : ""}
-                ${latestText ? `<p class="muted">Trang thai detect: ${latestText}</p>` : ""}
+                ${latestText ? `<p class="muted">Trang thai: ${latestText}</p>` : ""}
                 ${job.error ? `<p class="muted">${job.error}</p>` : ""}
             </article>
         `;
@@ -186,24 +152,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 <strong>${summary.max_occupancy_percent ?? "-"}%</strong>
             </article>
             <article class="summary-card">
-                <span>Muc giao thong cao nhat</span>
+                <span>Muc giao thong</span>
                 <strong>${summary.highest_traffic_level ?? "-"}</strong>
             </article>
             <article class="summary-card">
                 <span>Vi pham do xe</span>
                 <strong>${summary.parking_violation_count ?? "-"}</strong>
-            </article>
-            <article class="summary-card">
-                <span>Xe lon nhat trong ROI</span>
-                <strong>${summary.max_vehicle_count ?? "-"}</strong>
-            </article>
-            <article class="summary-card">
-                <span>Bien so lon nhat</span>
-                <strong>${summary.max_license_plate_count ?? "-"}</strong>
-            </article>
-            <article class="summary-card">
-                <span>Trang thai cuoi</span>
-                <strong>${summary.latest_status || "N/A"}</strong>
             </article>
         `;
     }
@@ -224,30 +178,10 @@ document.addEventListener("DOMContentLoaded", () => {
         renderPendingSummary(message);
     }
 
-    function showSelectedUpload(file) {
-        if (!file) {
-            return;
-        }
-        viewerPanel.hidden = false;
-        revokeInputPreviewUrl();
-        currentInputObjectUrl = URL.createObjectURL(file);
-        setVideoSource(inputVideo, currentInputObjectUrl);
-        inputVideoNote.textContent = `Dang xem truoc video moi: ${file.name}. Khi ban chay job, video nay se thay ty video cu.`;
-    }
-
     function prepareViewer(job) {
         viewerPanel.hidden = false;
 
-        if (job.input_video_url) {
-            revokeInputPreviewUrl();
-            setVideoSource(inputVideo, job.input_video_url);
-            inputVideoNote.textContent = "Video nguon cua job hien tai.";
-        } else {
-            clearVideo(inputVideo);
-            inputVideoNote.textContent = "Khong tim thay video nguon cho job nay.";
-        }
-
-        // Gan stream vao o ket qua lon
+        // Start stream if available
         if (job.stream_url && streamOutput.dataset.jobId !== job.id) {
             startStream(job.id, job.stream_url);
         }
@@ -293,11 +227,6 @@ document.addEventListener("DOMContentLoaded", () => {
         submitButton.disabled = false;
         if (file) {
             resetOutputView("Da chon video moi. San sang cho job moi.");
-            showSelectedUpload(file);
-        } else {
-            revokeInputPreviewUrl();
-            clearVideo(inputVideo);
-            inputVideoNote.textContent = "Hay chon video de bat dau job moi.";
         }
     });
 
@@ -318,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         resetOutputView("Job dang duoc tao. Stream se bat dau ngay khi backend xu ly.");
-        
+
         submitButton.disabled = true;
         renderStatus({ status: "queued", message: "Dang gui yeu cau len backend..." }, "warning");
 
@@ -340,6 +269,5 @@ document.addEventListener("DOMContentLoaded", () => {
 
     window.addEventListener("beforeunload", () => {
         stopPolling();
-        revokeInputPreviewUrl();
     });
 });
