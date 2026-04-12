@@ -1,33 +1,38 @@
+import os
 import sys
 from pathlib import Path
-from typing import Optional
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
-# Thêm đường dẫn dự án vào PYTHONPATH nếu chưa có
-APP_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = APP_DIR.parent
+# ---------------------------------------------------------------------------
+# Path setup
+# app.py nằm ở d:\UrbanM_AI\UrbanM_AI\ (project root)
+# Các module nội bộ (core, database, presentation) nằm bên trong frontend/
+# → Thêm frontend/ vào đầu sys.path để import không cần prefix "frontend."
+# ---------------------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parent          # d:\UrbanM_AI\UrbanM_AI\
+FRONTEND_DIR = PROJECT_ROOT / "frontend"                # d:\UrbanM_AI\UrbanM_AI\frontend\
 
-# Ưu tiên frontend để tránh xung đột với core của root
-if str(APP_DIR) not in sys.path:
-    sys.path.insert(0, str(APP_DIR))
+if str(FRONTEND_DIR) not in sys.path:
+    sys.path.insert(0, str(FRONTEND_DIR))
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 # Import Clean Architecture Components
-from core.config import SECRET_KEY, MAX_CONTENT_LENGTH, APP_DIR as FRONTEND_APP_DIR
-from database.sqlite_db import init_db
-from presentation.container import container, templates
-from presentation.web.auth_views import auth_router
-from presentation.web.camera_views import camera_router
-from presentation.web.dashboard_views import dashboard_router
-from presentation.web.test_video_views import test_video_router
-from presentation.web.user_views import user_router
-from presentation.web.vehicle_views import vehicle_router
+from frontend.core.config import SECRET_KEY
+from frontend.database.sqlite_db import init_db
+from frontend.presentation.container import container, templates
+from frontend.presentation.web.auth_views import auth_router
+from frontend.presentation.web.camera_views import camera_router
+from frontend.presentation.web.dashboard_views import dashboard_router
+from frontend.presentation.web.test_video_views import test_video_router
+from frontend.presentation.web.user_views import user_router
+from frontend.presentation.web.vehicle_views import vehicle_router
+from frontend.presentation.web.violation_views import violation_router
+from frontend.presentation.web.congestion_views import congestion_router
 
 
 def create_app() -> FastAPI:
@@ -69,8 +74,8 @@ def create_app() -> FastAPI:
     # Re-map url_for to be more compatible with legacy templates if needed, 
     # but we already updated templates to use blueprint notation.
 
-    # 4. Static Files
-    app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
+    # 4. Static Files — trỏ đến frontend/static/
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR / "static")), name="static")
 
     # 5. Error Handlers
     @app.exception_handler(403)
@@ -106,6 +111,8 @@ def create_app() -> FastAPI:
     app.include_router(user_router)
     app.include_router(camera_router)
     app.include_router(vehicle_router)
+    app.include_router(violation_router)
+    app.include_router(congestion_router)
     app.include_router(test_video_router)
 
     return app
@@ -113,4 +120,10 @@ def create_app() -> FastAPI:
 app = create_app()
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="127.0.0.1", port=5000, reload=False)
+    uvicorn.run(
+        "app:app",
+        host=os.environ.get("HOST", "0.0.0.0"),
+        port=int(os.environ.get("PORT", "5000")),
+        reload=os.environ.get("RELOAD", "false").lower() == "true",
+        log_level=os.environ.get("LOG_LEVEL", "info"),
+    )

@@ -223,19 +223,18 @@ def process_video(
         elif not should_cleanup_temp and not input_video_path.exists():
             raise FileNotFoundError(f"Khong tim thay video dau vao: {input_video_path}")
 
-    model_path = Path(str(settings["model_path"]))
-    if not model_path.exists():
-        raise FileNotFoundError(f"Khong tim thay model YOLO: {model_path}")
+        model_path = Path(str(settings["model_path"]))
+        if not model_path.exists():
+            raise FileNotFoundError(f"Khong tim thay model YOLO: {model_path}")
 
-    confidence_threshold = float(settings.get("confidence_threshold", 0.32))
-    enable_congestion = bool(settings.get("enable_congestion", True))
-    enable_illegal_parking = bool(settings.get("enable_illegal_parking", True))
-    enable_license_plate = bool(settings.get("enable_license_plate", True))
-    stop_seconds = float(settings.get("stop_seconds", 30.0))
-    move_threshold_px = float(settings.get("parking_move_threshold_px", 10.0))
-    process_stride = max(1, int(settings.get("process_every_n_frames", 2)))
+        confidence_threshold = float(settings.get("confidence_threshold", 0.32))
+        enable_congestion = bool(settings.get("enable_congestion", True))
+        enable_illegal_parking = bool(settings.get("enable_illegal_parking", True))
+        enable_license_plate = bool(settings.get("enable_license_plate", True))
+        stop_seconds = float(settings.get("stop_seconds", 30.0))
+        move_threshold_px = float(settings.get("parking_move_threshold_px", 10.0))
+        process_stride = max(1, int(settings.get("process_every_n_frames", 2)))
 
-    try:
         capture = cv2.VideoCapture(str(input_video_path))
         if not capture.isOpened():
             raise RuntimeError("Khong the mo video de chay kiem tra.")
@@ -267,280 +266,280 @@ def process_video(
             )
 
         model = _load_model(model_path)
-    traffic_monitor = TrafficMonitor(roi_polygon=roi_polygon) if enable_congestion else None
-    parking_monitor = (
-        ParkingOverlayMonitor(
-            no_parking_points=no_parking_points,
-            fps=fps,
-            stop_seconds=stop_seconds,
-            move_threshold_px=move_threshold_px,
+        traffic_monitor = TrafficMonitor(roi_polygon=roi_polygon) if enable_congestion else None
+        parking_monitor = (
+            ParkingOverlayMonitor(
+                no_parking_points=no_parking_points,
+                fps=fps,
+                stop_seconds=stop_seconds,
+                move_threshold_px=move_threshold_px,
+            )
+            if enable_illegal_parking
+            else None
         )
-        if enable_illegal_parking
-        else None
-    )
 
-    frame_index = 0
-    last_results = None
-    started_at = time.time()
-    frame_delay = 1.0 / fps  # Thoi gian giua cac frame theo FPS thuc cua video
-    last_frame_time = 0.0
-    max_vehicle_count = 0
-    max_people_count = 0
-    max_license_plate_count = 0
-    max_occupancy = 0.0
-    highest_traffic_level = 0
-    congestion_frames = 0
-    latest_status = "Dang bat dau phan tich"
-    violation_events: List[Dict[str, Any]] = []
+        frame_index = 0
+        last_results = None
+        started_at = time.time()
+        frame_delay = 1.0 / fps  # Thoi gian giua cac frame theo FPS thuc cua video
+        last_frame_time = 0.0
+        max_vehicle_count = 0
+        max_people_count = 0
+        max_license_plate_count = 0
+        max_occupancy = 0.0
+        highest_traffic_level = 0
+        congestion_frames = 0
+        latest_status = "Dang bat dau phan tich"
+        violation_events: List[Dict[str, Any]] = []
     
-    active_tracks = {}
-    passed_vehicles = []
+        active_tracks = {}
+        passed_vehicles = []
 
-    try:
-        while True:
-            success, frame = capture.read()
-            if not success:
-                break
+        try:
+            while True:
+                success, frame = capture.read()
+                if not success:
+                    break
 
-            frame_index += 1
-            current_time = time.time()
+                frame_index += 1
+                current_time = time.time()
 
-            if process_stride > 1 and (frame_index - 1) % process_stride != 0 and last_results is not None:
-                results = last_results
-            else:
-                results = model.track(frame, persist=True, tracker="bytetrack.yaml", verbose=False)
-                last_results = results
+                if process_stride > 1 and (frame_index - 1) % process_stride != 0 and last_results is not None:
+                    results = last_results
+                else:
+                    results = model.track(frame, persist=True, tracker="bytetrack.yaml", verbose=False)
+                    last_results = results
 
-            if traffic_monitor is not None:
-                traffic_monitor.reset_counters()
+                if traffic_monitor is not None:
+                    traffic_monitor.reset_counters()
 
-            current_license_plate_count = 0
+                current_license_plate_count = 0
 
-            for result in results:
-                for box in result.boxes:
-                    label = _canonical_label(model.names[int(box.cls[0])])
-                    if label not in DETECTABLE_LABELS:
-                        continue
-                    if label in LICENSE_PLATE_LABELS and not enable_license_plate:
-                        continue
+                for result in results:
+                    for box in result.boxes:
+                        label = _canonical_label(model.names[int(box.cls[0])])
+                        if label not in DETECTABLE_LABELS:
+                            continue
+                        if label in LICENSE_PLATE_LABELS and not enable_license_plate:
+                            continue
 
-                    confidence = float(box.conf[0])
-                    if confidence < confidence_threshold:
-                        continue
+                        confidence = float(box.conf[0])
+                        if confidence < confidence_threshold:
+                            continue
 
-                    track_id = int(box.id[0]) if box.id is not None else -1
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
+                        track_id = int(box.id[0]) if box.id is not None else -1
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
 
-                    if cv2.pointPolygonTest(roi_polygon, (center_x, center_y), False) < 0:
-                        continue
+                        if cv2.pointPolygonTest(roi_polygon, (center_x, center_y), False) < 0:
+                            continue
 
-                    box_color = BOX_COLORS.get(label, (255, 255, 255))
-                    label_text = _display_label(label)
-                    display_label = label_text if track_id == -1 else f"ID:{track_id} {label_text}"
+                        box_color = BOX_COLORS.get(label, (255, 255, 255))
+                        label_text = _display_label(label)
+                        display_label = label_text if track_id == -1 else f"ID:{track_id} {label_text}"
 
-                    if label in LICENSE_PLATE_LABELS:
-                        current_license_plate_count += 1
+                        if label in LICENSE_PLATE_LABELS:
+                            current_license_plate_count += 1
 
-                    if track_id != -1 and label in VEHICLE_LABELS:
-                        if track_id not in active_tracks:
-                            active_tracks[track_id] = {"label": label, "first_seen": frame_index, "last_seen": frame_index}
-                        else:
-                            active_tracks[track_id]["last_seen"] = frame_index
-                            active_tracks[track_id]["label"] = label
+                        if track_id != -1 and label in VEHICLE_LABELS:
+                            if track_id not in active_tracks:
+                                active_tracks[track_id] = {"label": label, "first_seen": frame_index, "last_seen": frame_index}
+                            else:
+                                active_tracks[track_id]["last_seen"] = frame_index
+                                active_tracks[track_id]["label"] = label
 
-                    if label == "person":
-                        if traffic_monitor is not None:
-                            traffic_monitor.log_person()
-                    elif label in VEHICLE_LABELS and traffic_monitor is not None:
-                        traffic_monitor.log_vehicle(
-                            track_id=track_id,
-                            cx=center_x,
-                            cy=center_y,
-                            current_time=current_time,
-                            bbox=(x1, y1, x2, y2),
+                        if label == "person":
+                            if traffic_monitor is not None:
+                                traffic_monitor.log_person()
+                        elif label in VEHICLE_LABELS and traffic_monitor is not None:
+                            traffic_monitor.log_vehicle(
+                                track_id=track_id,
+                                cx=center_x,
+                                cy=center_y,
+                                current_time=current_time,
+                                bbox=(x1, y1, x2, y2),
+                            )
+
+                        if parking_monitor is not None and label in VEHICLE_LABELS:
+                            override_label, override_color, event = parking_monitor.process_vehicle(
+                                track_id=track_id,
+                                label=label,
+                                center_x=center_x,
+                                center_y=center_y,
+                                frame_index=frame_index,
+                            )
+                            if override_label:
+                                display_label = override_label
+                            if override_color is not None:
+                                box_color = override_color
+                            if event is not None:
+                                violation_events.append(event)
+
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
+                        cv2.circle(frame, (center_x, center_y), 3, (0, 0, 255), -1)
+                        cv2.putText(
+                            frame,
+                            display_label,
+                            (x1, max(20, y1 - 10)),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.55,
+                            box_color,
+                            2,
                         )
 
-                    if parking_monitor is not None and label in VEHICLE_LABELS:
-                        override_label, override_color, event = parking_monitor.process_vehicle(
-                            track_id=track_id,
-                            label=label,
-                            center_x=center_x,
-                            center_y=center_y,
-                            frame_index=frame_index,
-                        )
-                        if override_label:
-                            display_label = override_label
-                        if override_color is not None:
-                            box_color = override_color
-                        if event is not None:
-                            violation_events.append(event)
+                max_license_plate_count = max(max_license_plate_count, current_license_plate_count)
 
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
-                    cv2.circle(frame, (center_x, center_y), 3, (0, 0, 255), -1)
+                for t_id, info in list(active_tracks.items()):
+                    if frame_index - info["last_seen"] > process_stride * 10:
+                        passed_vehicles.append({
+                            "track_id": t_id,
+                            "label": info["label"],
+                            "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())
+                        })
+                        del active_tracks[t_id]
+
+                cv2.polylines(frame, [roi_polygon], True, (255, 0, 0), 2)
+                if parking_monitor is not None:
+                    parking_monitor.draw_zone(frame)
+
+                if traffic_monitor is not None:
+                    average_speed, status_text, status_color, traffic_level = (
+                        traffic_monitor.calculate_speed_and_status(current_time, frame.shape)
+                    )
+                    traffic_monitor.draw_status(frame, average_speed, status_text, status_color)
+                    latest_status = status_text
+                    max_vehicle_count = max(max_vehicle_count, traffic_monitor.vehicle_count)
+                    max_people_count = max(max_people_count, traffic_monitor.people_count)
+                    max_occupancy = max(max_occupancy, traffic_monitor.last_occupancy)
+                    highest_traffic_level = max(highest_traffic_level, traffic_level)
+                    if traffic_level > 0:
+                        congestion_frames += 1
+                else:
+                    latest_status = "Tat phat hien tac nghen"
                     cv2.putText(
                         frame,
-                        display_label,
-                        (x1, max(20, y1 - 10)),
+                        latest_status,
+                        (30, 40),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.55,
-                        box_color,
+                        0.8,
+                        (200, 200, 200),
                         2,
                     )
 
-            max_license_plate_count = max(max_license_plate_count, current_license_plate_count)
+                if enable_license_plate:
+                    plate_status = f"Bien so: {current_license_plate_count}"
+                    cv2.putText(
+                        frame,
+                        plate_status,
+                        (30, 78 if traffic_monitor is not None else 72),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        BOX_COLORS["license_plate"],
+                        2,
+                    )
+                    latest_status = (
+                        f"{latest_status} | {plate_status}"
+                        if latest_status
+                        else plate_status
+                    )
 
-            for t_id, info in list(active_tracks.items()):
-                if frame_index - info["last_seen"] > process_stride * 10:
-                    passed_vehicles.append({
-                        "track_id": t_id,
-                        "label": info["label"],
-                        "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())
-                    })
-                    del active_tracks[t_id]
-
-            cv2.polylines(frame, [roi_polygon], True, (255, 0, 0), 2)
-            if parking_monitor is not None:
-                parking_monitor.draw_zone(frame)
-
-            if traffic_monitor is not None:
-                average_speed, status_text, status_color, traffic_level = (
-                    traffic_monitor.calculate_speed_and_status(current_time, frame.shape)
+                feature_text = (
+                    f"Tac nghen: {'ON' if enable_congestion else 'OFF'} | "
+                    f"Do xe sai quy dinh: {'ON' if enable_illegal_parking else 'OFF'} | "
+                    f"Bien so: {'ON' if enable_license_plate else 'OFF'}"
                 )
-                traffic_monitor.draw_status(frame, average_speed, status_text, status_color)
-                latest_status = status_text
-                max_vehicle_count = max(max_vehicle_count, traffic_monitor.vehicle_count)
-                max_people_count = max(max_people_count, traffic_monitor.people_count)
-                max_occupancy = max(max_occupancy, traffic_monitor.last_occupancy)
-                highest_traffic_level = max(highest_traffic_level, traffic_level)
-                if traffic_level > 0:
-                    congestion_frames += 1
-            else:
-                latest_status = "Tat phat hien tac nghen"
                 cv2.putText(
                     frame,
-                    latest_status,
-                    (30, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (200, 200, 200),
-                    2,
-                )
-
-            if enable_license_plate:
-                plate_status = f"Bien so: {current_license_plate_count}"
-                cv2.putText(
-                    frame,
-                    plate_status,
-                    (30, 78 if traffic_monitor is not None else 72),
+                    feature_text,
+                    (30, frame_height - 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,
-                    BOX_COLORS["license_plate"],
+                    (255, 255, 255),
                     2,
                 )
-                latest_status = (
-                    f"{latest_status} | {plate_status}"
-                    if latest_status
-                    else plate_status
+                cv2.putText(
+                    frame,
+                    f"Frame: {frame_index}",
+                    (30, frame_height - 60),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 255),
+                    2,
                 )
+                if progress_callback is not None:
+                    now = time.time()
+                    # Dam bao toc do phat dung FPS cua video goc
+                    elapsed_since_last = now - last_frame_time
+                    if elapsed_since_last < frame_delay:
+                        time.sleep(frame_delay - elapsed_since_last)
+                    last_frame_time = time.time()
 
-            feature_text = (
-                f"Tac nghen: {'ON' if enable_congestion else 'OFF'} | "
-                f"Do xe sai quy dinh: {'ON' if enable_illegal_parking else 'OFF'} | "
-                f"Bien so: {'ON' if enable_license_plate else 'OFF'}"
-            )
-            cv2.putText(
-                frame,
-                feature_text,
-                (30, frame_height - 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (255, 255, 255),
-                2,
-            )
-            cv2.putText(
-                frame,
-                f"Frame: {frame_index}",
-                (30, frame_height - 60),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 255),
-                2,
-            )
-            if progress_callback is not None:
-                now = time.time()
-                # Dam bao toc do phat dung FPS cua video goc
-                elapsed_since_last = now - last_frame_time
-                if elapsed_since_last < frame_delay:
-                    time.sleep(frame_delay - elapsed_since_last)
-                last_frame_time = time.time()
-
-                progress_callback(
-                    {
-                        "phase": "running_detection",
-                        "processed_frames": frame_index,
-                        "source_total_frames": total_frames,
-                        "progress_percent": round((frame_index / total_frames) * 100, 2)
-                        if total_frames
-                        else None,
-                        "elapsed_seconds": round(time.time() - started_at, 1),
-                        "latest_status": latest_status,
-                        "preview_jpeg": _encode_preview_frame(frame),
-                    }
-                )
-    finally:
-        capture.release()
-        for t_id, info in list(active_tracks.items()):
-            passed_vehicles.append({
-                "track_id": t_id,
-                "label": info["label"],
-                "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())
+                    progress_callback(
+                        {
+                            "phase": "running_detection",
+                            "processed_frames": frame_index,
+                            "source_total_frames": total_frames,
+                            "progress_percent": round((frame_index / total_frames) * 100, 2)
+                            if total_frames
+                            else None,
+                            "elapsed_seconds": round(time.time() - started_at, 1),
+                            "latest_status": latest_status,
+                            "preview_jpeg": _encode_preview_frame(frame),
+                        }
+                    )
+        finally:
+            capture.release()
+            for t_id, info in list(active_tracks.items()):
+                passed_vehicles.append({
+                    "track_id": t_id,
+                    "label": info["label"],
+                    "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime())
             })
 
-    processing_seconds = max(0.001, time.time() - started_at)
-    parking_violation_ids = (
-        sorted(parking_monitor.confirmed_violation_ids) if parking_monitor is not None else []
-    )
-
-    if progress_callback is not None:
-        progress_callback(
-            {
-                "phase": "finalizing_output",
-                "processed_frames": frame_index,
-                "source_total_frames": total_frames,
-                "progress_percent": 100.0,
-                "elapsed_seconds": round(processing_seconds, 1),
-                "latest_status": "Dang hoan tat video ket qua...",
-            }
+        processing_seconds = max(0.001, time.time() - started_at)
+        parking_violation_ids = (
+            sorted(parking_monitor.confirmed_violation_ids) if parking_monitor is not None else []
         )
 
-    return {
-        "input_path": str(input_video_path),
-        "output_path": None,  # No local file output
-        "processed_frames": frame_index,
-        "source_total_frames": total_frames,
-        "duration_seconds": round(frame_index / fps, 2) if fps else 0.0,
-        "processing_seconds": round(processing_seconds, 2),
-        "average_processing_fps": round(frame_index / processing_seconds, 2),
-        "max_vehicle_count": max_vehicle_count,
-        "max_people_count": max_people_count,
-        "max_license_plate_count": max_license_plate_count,
-        "max_occupancy_percent": round(max_occupancy, 2),
-        "highest_traffic_level": highest_traffic_level,
-        "congestion_alert_frames": congestion_frames,
-        "parking_violation_count": len(parking_violation_ids),
-        "parking_violation_ids": parking_violation_ids,
-        "latest_status": latest_status,
-        "roi_points": roi_points,
-        "no_parking_points": no_parking_points,
-        "feature_flags": {
-            "enable_congestion": enable_congestion,
-            "enable_illegal_parking": enable_illegal_parking,
-            "enable_license_plate": enable_license_plate,
-        },
-        "violation_events": violation_events[:20],
-        "passed_vehicles": passed_vehicles,
-    }
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    "phase": "finalizing_output",
+                    "processed_frames": frame_index,
+                    "source_total_frames": total_frames,
+                    "progress_percent": 100.0,
+                    "elapsed_seconds": round(processing_seconds, 1),
+                    "latest_status": "Dang hoan tat video ket qua...",
+                }
+            )
+
+        return {
+            "input_path": str(input_video_path),
+            "output_path": None,  # No local file output
+            "processed_frames": frame_index,
+            "source_total_frames": total_frames,
+            "duration_seconds": round(frame_index / fps, 2) if fps else 0.0,
+            "processing_seconds": round(processing_seconds, 2),
+            "average_processing_fps": round(frame_index / processing_seconds, 2),
+            "max_vehicle_count": max_vehicle_count,
+            "max_people_count": max_people_count,
+            "max_license_plate_count": max_license_plate_count,
+            "max_occupancy_percent": round(max_occupancy, 2),
+            "highest_traffic_level": highest_traffic_level,
+            "congestion_alert_frames": congestion_frames,
+            "parking_violation_count": len(parking_violation_ids),
+            "parking_violation_ids": parking_violation_ids,
+            "latest_status": latest_status,
+            "roi_points": roi_points,
+            "no_parking_points": no_parking_points,
+            "feature_flags": {
+                "enable_congestion": enable_congestion,
+                "enable_illegal_parking": enable_illegal_parking,
+                "enable_license_plate": enable_license_plate,
+            },
+            "violation_events": violation_events[:20],
+            "passed_vehicles": passed_vehicles,
+        }
     finally:
         if should_cleanup_temp and input_video_path.exists():
             try:

@@ -18,6 +18,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const testNoParkingPoints = document.getElementById("test_no_parking_points");
     const testNoParkingStatus = document.getElementById("test_no_parking_points_status");
 
+    const stopButton = document.getElementById("stop-test-job");
+    let currentJobId = null;
+
     if (!form || !uploadInput) {
         return;
     }
@@ -205,18 +208,21 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             if (job.status === "failed" || job.status === "aborted") {
                 submitButton.disabled = false;
-                streamOutputNote.textContent = job.error || "Xu ly video that bai.";
+                if (stopButton) stopButton.style.display = "none";
+                streamOutputNote.textContent = job.error || "Xu ly video that bai hoac da bi dung.";
                 stopPolling();
                 return;
             }
             if (job.status === "completed") {
                 renderSummary(job.summary || {});
                 submitButton.disabled = false;
+                if (stopButton) stopButton.style.display = "none";
                 stopPolling();
             }
         } catch (error) {
             window.portalApi.showNotice(feedback, error.message, "error");
             submitButton.disabled = false;
+            if (stopButton) stopButton.style.display = "none";
             stopPolling();
         }
     }
@@ -254,6 +260,11 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const data = await window.portalApi.submitForm("/api/test-jobs", formData);
             const job = data.job;
+            currentJobId = job.id;
+            if (stopButton) {
+                stopButton.style.display = "block";
+                stopButton.disabled = false;
+            }
             prepareViewer(job);
             renderStatus(job, pickTone(job.status));
             renderPendingSummary("Backend dang xu ly video. Luong stream se cap nhat truc tiep.");
@@ -262,10 +273,25 @@ document.addEventListener("DOMContentLoaded", () => {
             pollJob(job.id);
         } catch (error) {
             submitButton.disabled = false;
+            if (stopButton) stopButton.style.display = "none";
             window.portalApi.showNotice(feedback, error.message, "error");
             renderStatus({ status: "failed", message: "Khong tao duoc job kiem tra.", error: error.message }, "error");
         }
     });
+
+    if (stopButton) {
+        stopButton.addEventListener("click", async () => {
+            if (!currentJobId) return;
+            stopButton.disabled = true;
+            try {
+                await window.portalApi.post(`/api/test-jobs/${currentJobId}/stop`);
+                window.portalApi.showNotice(feedback, "Đã gửi yêu cầu dừng phân tích.", "info");
+            } catch (error) {
+                window.portalApi.showNotice(feedback, error.message, "error");
+                stopButton.disabled = false;
+            }
+        });
+    }
 
     window.addEventListener("beforeunload", () => {
         stopPolling();

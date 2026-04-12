@@ -8,10 +8,9 @@
     <title>{% block title %}CityVision AI Portal{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashstack.css') }}">
-    <!-- Chart.js for DashStack -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     {% block head %}{% endblock %}
 </head>
@@ -36,7 +35,7 @@
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="brand-block">
-                <h1><span>Dash</span>Stack</h1>
+                <h1>CityVision <span>AI</span></h1>
             </div>
 
             <nav class="nav-links" aria-label="Điều hướng chính">
@@ -56,8 +55,18 @@
                     Camera
                 </a>
 
+                <div class="nav-label" style="margin-top: 16px;">Giám sát giao thông</div>
+
                 <a id="nav-vehicles" class="nav-link {% if page == 'vehicles' %}active{% endif %}" href="{{ url_for('vehicles.vehicles_page') }}">
                     Phương tiện
+                </a>
+
+                <a id="nav-violations" class="nav-link {% if page == 'violations' %}active{% endif %}" href="{{ url_for('violations.violations_page') }}">
+                    Vi phạm đỗ xe
+                </a>
+
+                <a id="nav-congestion" class="nav-link {% if page == 'congestion' %}active{% endif %}" href="{{ url_for('congestion.congestion_page') }}">
+                    Nhật ký ùn tắc
                 </a>
 
                 <div class="nav-label" style="margin-top: 16px;">Phân tích AI</div>
@@ -86,24 +95,22 @@
                 </div>
                 
                 <div class="header-right">
-                    <div style="position: relative; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px;">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#202224" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                        <span style="position: absolute; top: 5px; right: 8px; background: #E74C3C; color: white; border-radius: 50%; font-size: 10px; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center;">6</span>
+                    <div class="icon-btn">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                        <span class="icon-badge">3</span>
                     </div>
                     
-                    <div style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <span style="font-size: 18px;">🇬🇧</span>
-                        <span style="font-size: 14px; color: #6B7280;">English</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    <div style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                        <span style="font-size: 18px;">🇻🇳</span>
+                        <span style="font-size: 14px; font-weight: 500; color: var(--text-muted);">Tiếng Việt</span>
                     </div>
                     
                     <div class="header-profile">
-                        <div class="header-avatar" style="background: url('https://ui-avatars.com/api/?name={{ current_user.full_name | urlencode }}&background=E5D5F5&color=8252E9') center/cover;"></div>
+                        <div class="header-avatar" style="background-image: url('https://ui-avatars.com/api/?name={{ current_user.full_name | urlencode }}&background=e0e7ff&color=3b82f6')"></div>
                         <div class="header-profile-text">
-                            <strong>{{ current_user.full_name or 'Moni Roy' }}</strong>
-                            <span>{{ 'Admin' if current_user.role == 'admin' else 'User' }}</span>
+                            <strong>{{ current_user.full_name or 'Quản trị viên' }}</strong>
+                            <span>{{ 'Admin System' if current_user.role == 'admin' else 'Operator' }}</span>
                         </div>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                     </div>
                 </div>
             </header>

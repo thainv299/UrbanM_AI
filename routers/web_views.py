@@ -8,7 +8,6 @@ from frontend.database import (
     get_user_record_by_username,
     get_dashboard_stats,
     list_cameras,
-    list_detected_license_plates,
 )
 
 router = APIRouter()

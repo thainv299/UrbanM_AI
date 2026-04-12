@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -126,9 +127,6 @@ def _load_model(model_path: Path) -> YOLO:
             pass
     return model
 
-
-    pass
-
 def process_video(
     input_stream: Any = None,
     input_path: str = None,
@@ -226,9 +224,10 @@ def process_video(
         print(f"[Telegram] Không khởi động được polling thread: {e}")
     
     camera_id = int(settings.get("camera_id", 0))  # Sử dụng camera_id từ settings hoặc mặc định là 0
-    logged_vehicle_ids = set() # Các xe đã ghi nhận đi qua
-    last_db_traffic_level = 0 # Mức độ ùn tắc cuối cùng đã lưu DB
-    unique_passed_count = 0 
+    logged_vehicle_ids: set = set()  # Các xe đã ghi nhận đi qua
+    last_db_traffic_level = 0  # Mức độ ùn tắc cuối cùng đã lưu DB
+    unique_passed_count = 0
+    violation_events: List[Dict[str, Any]] = []  # Danh sách vi phạm (tương thích ngược với API response)
 
     frame_index = 0
     last_results = None
@@ -242,7 +241,7 @@ def process_video(
     congestion_frames = 0
     import logging
     logging.getLogger("ppocr").setLevel(logging.ERROR)
-    ocr_reader = PaddleOCR(use_angle_cls=False, det=True, lang='en', show_log=False)
+    ocr_reader = PaddleOCR(lang='en')
     ocr_manager = OCRManager(ocr_reader, alpr_logger=alpr_logger)
     if enable_license_plate:
         ocr_manager.start_worker()

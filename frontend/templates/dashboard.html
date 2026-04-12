@@ -8,11 +8,11 @@
     
     <!-- Quick Actions -->
     <div style="display: flex; gap: 12px;">
-        <a href="{{ url_for('cameras.cameras_page') }}" style="background: white; border: 1px solid #E2E8F0; padding: 8px 16px; border-radius: 8px; color: #202224; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: all 0.2s;">
+        <a href="{{ url_for('cameras.cameras_page') }}" class="button secondary">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
             Thêm Camera
         </a>
-        <a href="{{ url_for('test_video.test_video_page') }}" style="background: #4379EE; border: none; padding: 8px 16px; border-radius: 8px; color: white; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(67, 121, 238, 0.2); transition: all 0.2s;">
+        <a href="{{ url_for('test_video.test_video_page') }}" class="button primary">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
             Chạy Test Video
         </a>
@@ -20,57 +20,57 @@
 </div>
 
 <!-- Stats -->
-<section class="ds-cards-wrapper">
-    <div class="ds-card">
-        <div class="ds-card-top">
-            <span class="ds-card-title">Người dùng</span>
-            <div class="ds-icon purple">
+<section class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-card-top">
+            <span class="stat-title">Người dùng</span>
+            <div class="stat-icon indigo">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
             </div>
         </div>
-        <div class="ds-card-value">{{ stats.user_count if stats and stats.user_count else '0' }}</div>
-        <div class="ds-card-bottom" style="opacity: 0.6;"><span class="ds-trend"></span>Tài khoản đăng ký</div>
+        <div class="stat-value">{{ stats.user_count if stats and stats.user_count else '0' }}</div>
+        <div class="stat-bottom"><span class="trend"></span>Tài khoản đăng ký</div>
     </div>
 
-    <div class="ds-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
-        <div class="ds-card-top">
-            <span class="ds-card-title">Tổng số xe</span>
-            <div class="ds-icon yellow">
+    <div class="stat-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
+        <div class="stat-card-top">
+            <span class="stat-title">Tổng số xe</span>
+            <div class="stat-icon amber">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
             </div>
         </div>
-        <div class="ds-card-value">{{ stats.total_vehicles if stats and stats.total_vehicles else '0' }}</div>
-        <div class="ds-card-bottom" style="opacity: 0.6;"><span class="ds-trend"></span>Lượt xe ghi nhận được</div>
+        <div class="stat-value">{{ stats.total_vehicles if stats and stats.total_vehicles else '0' }}</div>
+        <div class="stat-bottom"><span class="trend"></span>Lượt xe ghi nhận được</div>
     </div>
 
-    <div class="ds-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
-        <div class="ds-card-top">
-            <span class="ds-card-title">Xe đỗ sai</span>
-            <div class="ds-icon orange">
+    <div class="stat-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
+        <div class="stat-card-top">
+            <span class="stat-title">Xe đỗ sai</span>
+            <div class="stat-icon rose">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
             </div>
         </div>
-        <div class="ds-card-value">{{ stats.parking_violations|length if stats and stats.parking_violations else '0' }}</div>
-        <div class="ds-card-bottom" style="opacity: 0.6;"><span class="ds-trend" style="color: #E74C3C;">!</span> Cảnh báo vi phạm</div>
+        <div class="stat-value">{{ stats.parking_violations|length if stats and stats.parking_violations else '0' }}</div>
+        <div class="stat-bottom"><span class="trend down">!</span> Cảnh báo vi phạm</div>
     </div>
 
-    <div class="ds-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
-        <div class="ds-card-top">
-            <span class="ds-card-title">Tắc nghẽn</span>
-            <div class="ds-icon green">
+    <div class="stat-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
+        <div class="stat-card-top">
+            <span class="stat-title">Tắc nghẽn</span>
+            <div class="stat-icon emerald">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
             </div>
         </div>
-        <div class="ds-card-value">{{ stats.congestion_count if stats and stats.congestion_count else '0' }}</div>
-        <div class="ds-card-bottom" style="opacity: 0.6;"><span class="ds-trend"></span>Tần thuất cảnh báo</div>
+        <div class="stat-value">{{ stats.congestion_count if stats and stats.congestion_count else '0' }}</div>
+        <div class="stat-bottom"><span class="trend"></span>Tần thuất cảnh báo</div>
     </div>
 </section>
 
 <!-- Chart Area -->
-<section class="ds-chart-card">
-    <div class="ds-chart-header">
-        <h3 class="ds-chart-title">Thống kê lưu lượng xe</h3>
-        <select class="ds-chart-select"><option>Tháng này</option><option>Tháng trước</option></select>
+<section class="panel margin-top">
+    <div class="panel-header">
+        <h3>Thống kê lưu lượng xe</h3>
+        <select class="field" style="width: auto; padding: 6px 12px; margin-bottom: 0;"><option>Tháng này</option><option>Tháng trước</option></select>
     </div>
     <div style="position: relative; height: 350px; width: 100%;">
         <canvas id="vehicleChart"></canvas>

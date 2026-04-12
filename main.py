@@ -46,6 +46,7 @@ class App:
         start_bot_thread(self.traffic_alert_manager)
         self.ocr_manager = None
         self.CONF_THRESHOLD = 0.32 # Ngưỡng tin cậy của YOLO
+        self.is_detecting = False
 
         # --- KHỞI TẠO GIAO DIỆN ---
         self.lbl_title = tk.Label(root, text="Phát hiện đông đúc / tắc nghẽn", font=("Arial", 14, "bold"))
@@ -85,8 +86,14 @@ class App:
         self.frame_action = tk.Frame(root)
         self.frame_action.pack(fill="x", padx=10, pady=10)
 
-        self.btn_start = tk.Button(self.frame_action, text="Bắt đầu Detect", command=self.start_detection, width=25, height=2, state=tk.DISABLED, font=("Arial", 12, "bold"), bg="#4CAF50", fg="black")
-        self.btn_start.pack(pady=5)
+        self.frame_buttons = tk.Frame(self.frame_action)
+        self.frame_buttons.pack(pady=5)
+
+        self.btn_start = tk.Button(self.frame_buttons, text="Bắt đầu Detect", command=self.start_detection, width=15, height=2, state=tk.DISABLED, font=("Arial", 12, "bold"), bg="#4CAF50", fg="black")
+        self.btn_start.pack(side="left", padx=5)
+
+        self.btn_stop = tk.Button(self.frame_buttons, text="Dừng phân tích", command=self.stop_detection, width=15, height=2, state=tk.DISABLED, font=("Arial", 12, "bold"), bg="#f44336", fg="white")
+        self.btn_stop.pack(side="left", padx=5)
 
         self.lbl_status = tk.Label(root, text="Sẵn sàng", fg="black", font=("Arial", 10))
         self.lbl_status.pack(side="bottom", pady=10)
@@ -191,18 +198,27 @@ class App:
     def start_detection(self):
         if not self.video_path or self.roi_polygon is None: return
         self.btn_start.config(state=tk.DISABLED)
+        self.btn_stop.config(state=tk.NORMAL)
+        self.is_detecting = True
         threading.Thread(target=self.detect_video, daemon=True).start()
+
+    def stop_detection(self):
+        self.is_detecting = False
+        self.update_status("Đang dừng...", "orange")
+        self.btn_stop.config(state=tk.DISABLED)
 
     def update_status(self, text, color="black"):
         self.root.after(0, lambda: self.lbl_status.config(text=text, fg=color))
 
     def reset_ui(self):
         self.root.after(0, lambda: self.btn_start.config(state=tk.NORMAL))
+        self.root.after(0, lambda: self.btn_stop.config(state=tk.DISABLED))
+        self.is_detecting = False
 
     def load_model(self):
         model = YOLO(self.model_path).to("cuda") if not self.model_path.endswith(".engine") else YOLO(self.model_path, task="detect")
         if self.ocr_reader is None:
-            self.ocr_reader = PaddleOCR(use_angle_cls=False, det=True, lang='en', show_log=False)
+            self.ocr_reader = PaddleOCR(lang='en')
             self.ocr_manager = OCRManager(self.ocr_reader, alpr_logger=self.alpr_logger)
         dummy = np.zeros((640, 640, 3), dtype=np.uint8)
         for _ in range(5): model.predict(dummy, verbose=False)
@@ -229,7 +245,7 @@ class App:
 
             self.parking_manager.setup_detection(video_fps)
 
-            while cap.isOpened():
+            while cap.isOpened() and self.is_detecting:
                 ret, frame = cap.read()
                 if not ret: break
                 
