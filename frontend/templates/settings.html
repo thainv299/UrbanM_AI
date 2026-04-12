@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Cấu hình Hệ thống UrbanM AI{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+        <h2 class="page-title" style="margin-bottom: 4px;">Trung tâm Điều hành & Cấu hình</h2>
+        <p style="color: #64748B; font-size: 14px;">Tùy chỉnh thuật toán nhận diện và quy chuẩn quản lý đô thị thông minh</p>
+    </div>
+    <div style="display: flex; gap: 10px;">
+        <span style="background: #F0FDF4; color: #166534; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; border: 1px solid #BBF7D0;">Server: Online</span>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+    
+    <div class="ds-chart-card" style="padding: 24px; background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+        <h3 style="margin-bottom: 20px; font-size: 16px; font-weight: 700; color: #202224; border-bottom: 2px solid #4379EE; padding-bottom: 10px; display: inline-block;">
+            <i class="fas fa-brain" style="margin-right: 8px; color: #4379EE;"></i>Thông số Vận hành AI
+        </h3>
+        
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Độ tự tin tối thiểu (Confidence)</label>
+            <input type="range" min="0" max="100" value="50" style="width: 100%; accent-color: #4379EE;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94A3B8; margin-top: 4px;">
+                <span>Nhạy (0.1)</span><span>Mặc định (0.5)</span><span>Chặt chẽ (1.0)</span>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Tần suất xử lý (Frame Skip)</label>
+            <select style="width: 100%; padding: 10px; border: 1px solid #E2E8F0; border-radius: 8px; font-size: 13px;">
+                <option>Xử lý mọi khung hình (Real-time)</option>
+                <option>Bỏ qua 1 khung hình (Optimized)</option>
+                <option>Chế độ tiết kiệm tài nguyên</option>
+            </select>
+        </div>
+
+        <div>
+            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Ngưỡng IoU (Lọc trùng lặp)</label>
+            <input type="range" min="0" max="100" value="45" style="width: 100%; accent-color: #4379EE;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94A3B8;">
+                <span>0.1</span><span>0.45</span><span>0.9</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="ds-chart-card" style="padding: 24px; background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+        <h3 style="margin-bottom: 20px; font-size: 16px; font-weight: 700; color: #202224; border-bottom: 2px solid #EF4444; padding-bottom: 10px; display: inline-block;">
+            <i class="fas fa-map-marked-alt" style="margin-right: 8px; color: #EF4444;"></i>Tiêu chuẩn Giám sát Đô thị
+        </h3>
+
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Ngưỡng mật độ Tắc nghẽn (%)</label>
+            <input type="range" min="0" max="100" value="70" style="width: 100%; accent-color: #EF4444;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94A3B8;">
+                <span>Thông thoáng</span><span>70% (Cảnh báo)</span><span>Ùn tắc</span>
+            </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Thời gian xác định đỗ sai (giây)</label>
+            <input type="number" value="30" style="width: 100%; padding: 10px; border: 1px solid #E2E8F0; border-radius: 8px; font-size: 13px;">
+        </div>
+
+        <div style="padding: 12px; background: #F0FDF4; border-radius: 8px; border: 1px dashed #22C55E;">
+            <h4 style="font-size: 12px; margin: 0 0 5px 0; color: #166534; font-weight: 700;">TIÊU CHUẨN THÔNG THOÁNG</h4>
+            <p style="font-size: 11px; color: #15803d; margin: 0;">Lưu lượng đạt trên 40 xe/phút và không có vật cản cố định.</p>
+        </div>
+    </div>
+
+    <div class="ds-chart-card" style="grid-column: span 2; padding: 24px; background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+        <h3 style="margin-bottom: 20px; font-size: 16px; font-weight: 700; color: #202224;">
+            <i class="fas fa-database" style="margin-right: 8px; color: #10B981;"></i>Hạ tầng & Lưu trữ Dữ liệu
+        </h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 30px;">
+            <div>
+                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Lưu trữ Logs</label>
+                <select style="width: 100%; padding: 10px; border: 1px solid #E2E8F0; border-radius: 8px; font-size: 13px;">
+                    <option>7 ngày gần nhất</option>
+                    <option>30 ngày gần nhất</option>
+                    <option>Toàn bộ (Lưu trữ vĩnh viễn)</option>
+                </select>
+            </div>
+            
+            <div>
+                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Định dạng bằng chứng</label>
+                <div style="display: flex; gap: 15px; margin-top: 10px;">
+                    <label style="font-size: 13px; cursor: pointer;"><input type="radio" name="fmt" checked> JPG (Nén)</label>
+                    <label style="font-size: 13px; cursor: pointer;"><input type="radio" name="fmt"> PNG (Gốc)</label>
+                </div>
+            </div>
+
+            <div style="background: #F8FAFC; padding: 12px; border-radius: 8px; border-left: 4px solid #F59E0B;">
+                <div style="font-size: 12px; color: #64748B; line-height: 1.6;">
+                    Database: <span style="color: #10B981; font-weight: 700;">portal.db (Connected)</span><br>
+                    Storage: <span style="color: #10B981; font-weight: 700;">8.8GB / 10GB Available</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top: 32px; display: flex; justify-content: flex-end; gap: 15px;">
+    <button style="background: white; border: 1px solid #E2E8F0; padding: 12px 30px; border-radius: 8px; font-weight: 600; color: #64748B; cursor: pointer;">Khôi phục mặc định</button>
+    <button onclick="saveAll()" style="background: #4379EE; border: none; padding: 12px 45px; border-radius: 8px; color: white; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(67, 121, 238, 0.2);">Lưu cấu hình hệ thống</button>
+</div>
+
+<script>
+function saveAll() {
+    alert('UrbanM AI thông báo:\n\n1. Thông số Engine AI đã được nạp lại.\n2. Tiêu chuẩn quản lý đô thị đã cập nhật.\n3. Cơ sở dữ liệu đã đồng bộ thành công!');
+}
+</script>
+{% endblock %}
