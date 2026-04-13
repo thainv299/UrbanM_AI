@@ -37,17 +37,6 @@ class LocalStorage:
             shutil.copyfileobj(upload_file.file, buffer)
         return target_path
 
-    def resolve_local_video(self, local_path_text: str) -> Optional[Path]:
-        """"Kiểm tra video có tồn tại trên máy chủ local không"""
-        candidate = Path(local_path_text).expanduser()
-        if not candidate.is_absolute():
-            candidate = PROJECT_ROOT / candidate
-        resolved = candidate.resolve()
-        
-        if not resolved.exists() or not self.is_allowed_video(resolved.name):
-            return None
-        return resolved
-
     def save_preview_image(self, job_id: str, preview_jpeg: bytes) -> Path:
         """Lưu file ảnh preview tạm cho job"""
         preview_path = self.get_preview_path(job_id)

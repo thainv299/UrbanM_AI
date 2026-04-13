@@ -136,7 +136,6 @@ async def api_create_test_job(
     request: Request,
     user=Depends(login_required),
     camera_id: Optional[str] = Form(None),
-    local_path: Optional[str] = Form(None),
     video_file: Optional[UploadFile] = File(None),
     model_path: Optional[str] = Form(None),
     confidence_threshold: Optional[str] = Form(None),
@@ -168,16 +167,8 @@ async def api_create_test_job(
             return JSONResponse(status_code=400, content={"ok": False, "error": "Định dạng video không được hỗ trợ."})
         input_ext = Path(video_file.filename).suffix.lower()
         input_stream = io.BytesIO(await video_file.read())
-    elif local_path and local_path.strip():
-        # Chuyển đổi video nội bộ (local path) thành luồng BytesIO để tương thích hoàn toàn với cơ chế stream
-        path_str = container.file_storage.resolve_local_video(local_path.strip())
-        if not path_str:
-            return JSONResponse(status_code=400, content={"ok": False, "error": "Đường dẫn video local không hợp lệ."})
-        with open(path_str, "rb") as f:
-            input_stream = io.BytesIO(f.read())
-        input_ext = Path(path_str).suffix.lower()
     else:
-        return JSONResponse(status_code=400, content={"ok": False, "error": "Hãy chọn file upload hoặc nhập đường dẫn local."})
+        return JSONResponse(status_code=400, content={"ok": False, "error": "Hãy chọn tệp video để tải lên."})
 
     form_dict = {
         "model_path": model_path,
