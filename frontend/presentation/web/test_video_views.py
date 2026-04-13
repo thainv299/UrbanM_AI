@@ -12,6 +12,7 @@ from core.errors import AppError, NotFoundError, ValidationError
 from core.utils import build_placeholder_frame, resolve_path
 from presentation.container import container, templates
 from presentation.middlewares.auth import login_required
+from core.config import PROJECT_ROOT  # Đã có trong test_video_views qua resolve_path hoặc config
 
 test_video_router = APIRouter()
 
@@ -104,6 +105,18 @@ def _build_test_settings(form_data: Dict[str, Any], camera: Any) -> Dict[str, An
 async def test_video_page(request: Request, user=Depends(login_required)):
     if isinstance(user, RedirectResponse):
         return user
+    
+    # Quét danh sách model khả dụng trong thư mục models/
+    models_dir = PROJECT_ROOT / "models"
+    available_models = []
+    if models_dir.exists():
+        for f in models_dir.iterdir():
+            if f.is_file() and f.suffix.lower() in [".pt", ".engine"]:
+                available_models.append(f.name)
+    
+    # Sắp xếp để bản test.pt hoặc yolo... lên đầu nếu cần, hoặc alphabet
+    available_models.sort()
+    
     cameras = container.camera_use_cases.list_cameras()
     return container.render_template(
         request,
@@ -112,6 +125,7 @@ async def test_video_page(request: Request, user=Depends(login_required)):
             "page": "test-video",
             "cameras": [c.to_dict() for c in cameras],
             "default_model_path": str(DEFAULT_MODEL_PATH),
+            "available_models": available_models,
         }
     )
 
