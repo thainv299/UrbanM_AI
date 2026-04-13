@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 
 from presentation.container import container, templates
 from presentation.middlewares.auth import get_current_user, login_required
+from fastapi.responses import HTMLResponse
 
 dashboard_router = APIRouter()
 
@@ -35,3 +36,7 @@ async def api_dashboard(user=Depends(login_required)):
     if isinstance(user, RedirectResponse):
         return user
     return {"ok": True, "stats": container.dashboard_use_cases.get_dashboard_stats()}
+
+@dashboard_router.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    return container.render_template(request, "settings.html", {"page": "settings"})
