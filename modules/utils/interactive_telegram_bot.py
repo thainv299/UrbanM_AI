@@ -10,7 +10,6 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "YOUR_CHAT_ID_HERE")
 
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-bot = None
 alert_manager_ref = None
 
 def send_alert_with_button(img_path, caption, level):
