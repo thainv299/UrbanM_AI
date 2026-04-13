@@ -79,8 +79,11 @@
             <label class="field">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <span>Vùng nhận diện ROI (JSON, tùy chọn)</span>
-                    <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="this.nextElementSibling.click()">📁 Chọn file JSON</button>
-                    <input type="file" accept=".json" style="display: none;" onchange="portalApi.readJsonFileToInput(this, 'roi_points')">
+                    <div style="display: flex; gap: 4px;">
+                        <button type="button" class="button secondary xs roi-draw-btn" data-target="roi_points" style="padding: 2px 8px; font-size: 0.75rem; display: none;">Vẽ ROI</button>
+                        <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="this.nextElementSibling.click()">Load JSON</button>
+                        <input type="file" accept=".json" style="display: none;" onchange="portalApi.readJsonFileToInput(this, 'roi_points')">
+                    </div>
                 </div>
                 <textarea name="roi_points" id="roi_points" rows="2" style="font-family: var(--font-mono); font-size: 0.82rem;"
                     placeholder="Mặc định dùng toàn bộ khung hình"></textarea>
@@ -89,8 +92,11 @@
             <label class="field">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <span>Vùng cấm đỗ xe (JSON, tùy chọn)</span>
-                    <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="this.nextElementSibling.click()">📁 Chọn file JSON</button>
-                    <input type="file" accept=".json" style="display: none;" onchange="portalApi.readJsonFileToInput(this, 'no_parking_points')">
+                    <div style="display: flex; gap: 4px;">
+                        <button type="button" class="button secondary xs roi-draw-btn" data-target="no_parking_points" style="padding: 2px 8px; font-size: 0.75rem; display: none;">Vẽ Vùng</button>
+                        <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="this.nextElementSibling.click()">Load JSON</button>
+                        <input type="file" accept=".json" style="display: none;" onchange="portalApi.readJsonFileToInput(this, 'no_parking_points')">
+                    </div>
                 </div>
                 <textarea name="no_parking_points" id="no_parking_points" rows="2" style="font-family: var(--font-mono); font-size: 0.82rem;"
                     placeholder='VD: [[140,340],[860,340],[860,520],[140,520]]'></textarea>
@@ -110,10 +116,10 @@
 
             <div style="display: flex; gap: 8px; margin-top: 4px;">
                 <button type="submit" class="button primary" id="submit-test-job" style="flex: 1;">
-                    🚀 Bắt đầu Phân tích
+                    Bắt đầu Phân tích
                 </button>
                 <button type="button" class="button secondary" id="stop-test-job" style="flex: 1; display: none; background-color: var(--color-error, #f44336); color: white; border-color: transparent;">
-                    🛑 Dừng Phân tích
+                    Dừng Phân tích
                 </button>
             </div>
         </form>
@@ -160,8 +166,37 @@
         style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 24px;">
     </div>
 </section>
+
+<!-- ROI Drawing Modal -->
+<div id="roi-drawing-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 12px; padding: 20px; max-width: 90%; max-height: 90%; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="margin: 0;">Vẽ Vùng Quan Sát (ROI)</h3>
+            <button type="button" onclick="roiDrawingTool.closeModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; padding: 0;">✕</button>
+        </div>
+        
+        <div style="margin-bottom: 12px; font-size: 0.9rem; color: #666;">
+            <p style="margin: 0 0 8px 0;"><strong>Hướng dẫn:</strong></p>
+            <ul style="margin: 0; padding-left: 20px;">
+                <li><strong>Click trái:</strong> Thêm điểm</li>
+                <li><strong>Click phải:</strong> Xóa toàn bộ</li>
+                <li><strong>Ctrl+Z:</strong> Xóa điểm cuối</li>
+                <li><strong>Enter:</strong> Xác nhận (ít nhất 3 điểm)</li>
+                <li><strong>ESC:</strong> Hủy</li>
+            </ul>
+        </div>
+
+        <canvas id="roi-canvas" style="border: 2px solid #ddd; border-radius: 8px; background: #000; cursor: crosshair; flex: 1; max-height: 500px;"></canvas>
+        
+        <div style="display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;">
+            <button type="button" class="button secondary" onclick="roiDrawingTool.closeModal()" style="padding: 8px 16px;">Hủy</button>
+            <button type="button" class="button primary" onclick="roiDrawingTool.confirmPoints()" style="padding: 8px 16px;">Xác nhận</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/roi_tool.js') }}"></script>
 <script src="{{ url_for('static', filename='js/test_video.js') }}"></script>
 {% endblock %}
