@@ -81,12 +81,13 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 bien_so TEXT NOT NULL,
                 ngay_phat_hien TEXT NOT NULL,
+                thoi_gian_phat_hien TEXT,
                 so_lan_phat_hien INTEGER NOT NULL DEFAULT 1,
                 do_chinh_xac_tb REAL DEFAULT 0.0,
                 duong_dan_anh TEXT,
+                id_camera INTEGER DEFAULT 0,
                 ngay_tao TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                ngay_cap_nhat TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(bien_so, ngay_phat_hien)
+                ngay_cap_nhat TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
             CREATE TABLE IF NOT EXISTS lich_su_phuong_tien (
@@ -112,6 +113,16 @@ def init_db() -> None:
         if "bat_phat_hien_bien_so" not in camera_columns:
             connection.execute(
                 "ALTER TABLE camera ADD COLUMN bat_phat_hien_bien_so INTEGER NOT NULL DEFAULT 1"
+            )
+
+        # Cột id_camera trong bảng biển số
+        plate_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(bien_so_phat_hien)").fetchall()
+        }
+        if "id_camera" not in plate_columns:
+            connection.execute(
+                "ALTER TABLE bien_so_phat_hien ADD COLUMN id_camera INTEGER DEFAULT 0"
             )
 
         # Cấu hình mặc định
@@ -285,30 +296,29 @@ def log_passed_vehicle(camera_id: int, bien_so_xe: str, loai_xe: str, thoi_gian_
         connection.commit()
 
 
-def log_detected_license_plate(license_plate: str, detection_count: int = 1, avg_confidence: float = 0.0, image_paths: str = None) -> None:
-    """Lưu biển số được phát hiện"""
+def log_detected_license_plate(license_plate: str, thoi_gian: str = None, ngay: str = None, detection_count: int = 1, avg_confidence: float = 0.0, image_paths: str = None, camera_id: int = 0) -> None:
+    """Lưu biển số được phát hiện (Nhật ký từng lần)"""
     from datetime import datetime
-    detected_date = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now()
+    if ngay is None:
+        detected_date = now.strftime("%Y-%m-%d")
+    else:
+        detected_date = ngay
+        
+    if thoi_gian is None:
+        thoi_gian = now.strftime("%H:%M:%S")
     
-    # Đảm bảo đường dẫn lưu vào DB là tương đối và đúng thư mục logs/plates/
+    # Đàm bảo đường dẫn đúng cho web
     if image_paths:
-        image_paths = image_paths.replace("runtime/license_plates/", "logs/plates/")
+        image_paths = image_paths.replace("\\", "/").replace("runtime/license_plates/", "logs/plates/")
     
     with connect() as connection:
         connection.execute(
             """
-            INSERT INTO bien_so_phat_hien (bien_so, ngay_phat_hien, so_lan_phat_hien, do_chinh_xac_tb, duong_dan_anh)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(bien_so, ngay_phat_hien) DO UPDATE SET
-                so_lan_phat_hien = so_lan_phat_hien + ?,
-                do_chinh_xac_tb = ?,
-                duong_dan_anh = CASE 
-                    WHEN duong_dan_anh IS NULL THEN ?
-                    ELSE duong_dan_anh || ',' || ?
-                END,
-                ngay_cap_nhat = CURRENT_TIMESTAMP
+            INSERT INTO bien_so_phat_hien (bien_so, ngay_phat_hien, thoi_gian_phat_hien, so_lan_phat_hien, do_chinh_xac_tb, duong_dan_anh, id_camera)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (license_plate, detected_date, detection_count, avg_confidence, image_paths, detection_count, avg_confidence, image_paths, image_paths)
+            (license_plate, detected_date, thoi_gian, detection_count, avg_confidence, image_paths, camera_id)
         )
         connection.commit()
 
@@ -318,10 +328,10 @@ def get_detected_license_plates(limit: int = 100) -> list:
     with connect() as connection:
         rows = connection.execute(
             """
-            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, so_lan_phat_hien as detection_count, 
-                   do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
+            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time, 
+                   so_lan_phat_hien as detection_count, do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
             FROM bien_so_phat_hien
-            ORDER BY ngay_cap_nhat DESC
+            ORDER BY ngay_phat_hien DESC, thoi_gian_phat_hien DESC
             LIMIT ?
             """,
             (limit,)
@@ -334,11 +344,11 @@ def get_license_plate_by_date(detected_date: str) -> list:
     with connect() as connection:
         rows = connection.execute(
             """
-            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, so_lan_phat_hien as detection_count, 
-                   do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
+            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time,
+                   so_lan_phat_hien as detection_count, do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
             FROM bien_so_phat_hien
             WHERE ngay_phat_hien = ?
-            ORDER BY bien_so ASC
+            ORDER BY thoi_gian_phat_hien DESC
             """,
             (detected_date,)
         ).fetchall()

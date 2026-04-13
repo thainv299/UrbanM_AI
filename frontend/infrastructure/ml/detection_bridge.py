@@ -25,7 +25,8 @@ from database.sqlite_db import (
     log_passed_vehicle,
     log_congestion,
     log_parking_violation,
-    log_vehicle_count
+    log_vehicle_count,
+    log_detected_license_plate
 )
 from paddleocr import PaddleOCR
 from collections import deque
@@ -202,7 +203,8 @@ def process_video(
     traffic_monitor = TrafficMonitor(roi_polygon=roi_polygon) if enable_congestion else None
     
     # Khởi tạo các Manager tiêu chuẩn của dự án (Giống main.py)
-    alpr_logger = ALPRLogger()
+    camera_id = int(settings.get("camera_id", 0))  # Lục id camera từ settings
+    alpr_logger = ALPRLogger(db_callback=log_detected_license_plate, id_camera=camera_id)
     traffic_alert_manager = TrafficAlertManager()
     parking_manager = ParkingManager(None, None) 
     
@@ -223,7 +225,6 @@ def process_video(
     except Exception as e:
         print(f"[Telegram] Không khởi động được polling thread: {e}")
     
-    camera_id = int(settings.get("camera_id", 0))  # Sử dụng camera_id từ settings hoặc mặc định là 0
     logged_vehicle_ids: set = set()  # Các xe đã ghi nhận đi qua
     last_db_traffic_level = 0  # Mức độ ùn tắc cuối cùng đã lưu DB
     unique_passed_count = 0

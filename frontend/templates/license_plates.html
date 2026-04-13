@@ -91,7 +91,7 @@ function displayPlates(plates) {
                     <tr>
                         <th>Biển Số</th>
                         <th style="text-align: center;">Ngày</th>
-                        <th style="text-align: center;">Lần Phát Hiện</th>
+                        <th style="text-align: center;">Giờ</th>
                         <th style="text-align: center;">Độ Chính Xác</th>
                         <th style="text-align: center;">Ảnh</th>
                     </tr>
@@ -106,7 +106,7 @@ function displayPlates(plates) {
                                 ${plate.detected_date || 'N/A'}
                             </td>
                             <td style="text-align: center;">
-                                <span class="pill success">${plate.detection_count || 0}</span>
+                                <span class="pill success">${plate.detected_time || '--:--:--'}</span>
                             </td>
                             <td style="text-align: center;">
                                 <span class="pill blue">${((plate.avg_confidence || 0) * 100).toFixed(1)}%</span>
@@ -114,7 +114,7 @@ function displayPlates(plates) {
                             <td style="text-align: center;">
                                 ${plate.image_paths ? `
                                     <a href="/${plate.image_paths.split(',')[0].replace(/^\/+/,'')}" target="_blank" class="button secondary xs">
-                                        📷 Xem ${plate.image_paths.split(',').length > 1 ? `(${plate.image_paths.split(',').length})` : ''}
+                                        📷 Xem Ảnh
                                     </a>
                                 ` : '<span class="badge muted">Không có</span>'}
                             </td>
