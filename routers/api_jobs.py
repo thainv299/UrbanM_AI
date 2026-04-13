@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, Depends, UploadFile, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, Response, StreamingResponse
 from werkzeug.utils import secure_filename
 
-from core.config import executor, INPUTS_DIR, OUTPUTS_DIR, ALLOWED_VIDEO_EXTENSIONS
+from core.config import executor, OUTPUTS_DIR, ALLOWED_VIDEO_EXTENSIONS
 from core.utils import json_error, resolve_path, build_test_settings
 from core.security import require_login
 from frontend.database import get_camera

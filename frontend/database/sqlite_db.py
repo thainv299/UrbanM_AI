@@ -165,12 +165,21 @@ def get_illegal_parking_violations() -> list:
                    pv.ngay_tao as created_at, c.ten_camera as camera_name
             FROM vi_pham_do_xe pv
             LEFT JOIN camera c ON pv.id_camera = c.id
-            WHERE pv.da_giai_quyet = 0
-            ORDER BY pv.thoi_gian_vi_pham DESC
-            LIMIT 10
+            ORDER BY pv.da_giai_quyet ASC, pv.thoi_gian_vi_pham DESC
+            LIMIT 50
             """
         ).fetchall()
     return [dict(row) for row in rows]
+
+def resolve_parking_violation(violation_id: int) -> bool:
+    """Đánh dấu vi phạm đỗ xe đã được giải quyết"""
+    with connect() as connection:
+        cursor = connection.execute(
+            "UPDATE vi_pham_do_xe SET da_giai_quyet = 1 WHERE id = ?",
+            (violation_id,)
+        )
+        connection.commit()
+        return cursor.rowcount > 0
 
 
 def get_congestion_count() -> int:
@@ -185,7 +194,23 @@ def get_congestion_count() -> int:
             """,
             (today,)
         ).fetchone()
-    return int(row["total"]) if row["total"] else 0
+    return row["total"] if row and row["total"] else 0
+
+def get_congestion_history() -> list:
+    """Lấy lịch sử ùn tắc"""
+    with connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT n.id, n.id_camera as camera_id, n.muc_do_un_tac as congestion_level,
+                   n.thoi_gian_bat_dau as start_time, n.thoi_gian_ket_thuc as end_time,
+                   n.thoi_gian_keo_dai_giay as duration_seconds, c.ten_camera as camera_name
+            FROM nhat_ky_un_tac n
+            LEFT JOIN camera c ON n.id_camera = c.id
+            ORDER BY n.thoi_gian_bat_dau DESC
+            LIMIT 50
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def log_vehicle_count(camera_id: int, count: int, recorded_date: str = None) -> None:

@@ -4,7 +4,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Dict, Any, Optional, Union
 
-from core.config import jobs, job_lock, PREVIEWS_DIR, OUTPUTS_DIR
+from core.config import jobs, job_lock
 from frontend.services.detection_bridge import process_video
 from frontend.database import DB_PATH
 
@@ -32,8 +32,6 @@ def get_queue_position(job_id: str) -> Optional[int]:
             return index
     return None
 
-def preview_path_for_job(job_id: str) -> Path:
-    return PREVIEWS_DIR / f"{job_id}.jpg"
 
 def public_job(job: Dict[str, Any]) -> Dict[str, Any]:
     payload = dict(job)
@@ -53,7 +51,6 @@ def run_detection_job(
     output_filename: str,
     detection_settings: Dict[str, Any],
 ) -> None:
-    output_path = OUTPUTS_DIR / output_filename
 
     def handle_progress(progress: Dict[str, Any]) -> None:
         # Kiem tra abort signal truoc khi tiep tuc xu ly
