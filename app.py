@@ -76,6 +76,12 @@ def create_app() -> FastAPI:
 
     # 4. Static Files — trỏ đến frontend/static/
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR / "static")), name="static")
+    
+    # Mount thư mục logs để phục vụ ảnh biển số và vi phạm
+    LOGS_DIR = PROJECT_ROOT / "logs"
+    if not LOGS_DIR.exists():
+        LOGS_DIR.mkdir()
+    app.mount("/logs", StaticFiles(directory=str(LOGS_DIR)), name="logs")
 
     # 5. Error Handlers
     @app.exception_handler(403)

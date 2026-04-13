@@ -113,8 +113,8 @@ function displayPlates(plates) {
                             </td>
                             <td style="text-align: center;">
                                 ${plate.image_paths ? `
-                                    <a href="${plate.image_paths}" target="_blank" class="button secondary xs">
-                                        📷 Xem
+                                    <a href="/${plate.image_paths.split(',')[0].replace(/^\/+/,'')}" target="_blank" class="button secondary xs">
+                                        📷 Xem ${plate.image_paths.split(',').length > 1 ? `(${plate.image_paths.split(',').length})` : ''}
                                     </a>
                                 ` : '<span class="badge muted">Không có</span>'}
                             </td>

@@ -236,6 +236,10 @@ def log_parking_violation(camera_id: int, license_plate: str = None, violation_t
     if violation_time is None:
         violation_time = datetime.now().isoformat()
     
+    # Đảm bảo đường dẫn lưu vào DB là tương đối và đúng thư mục logs/violations/
+    if frame_path and "runtime/violations/" in frame_path:
+        frame_path = frame_path.replace("runtime/violations/", "logs/violations/")
+    
     with connect() as connection:
         connection.execute(
             """
@@ -285,6 +289,10 @@ def log_detected_license_plate(license_plate: str, detection_count: int = 1, avg
     """Lưu biển số được phát hiện"""
     from datetime import datetime
     detected_date = datetime.now().strftime("%Y-%m-%d")
+    
+    # Đảm bảo đường dẫn lưu vào DB là tương đối và đúng thư mục logs/plates/
+    if image_paths:
+        image_paths = image_paths.replace("runtime/license_plates/", "logs/plates/")
     
     with connect() as connection:
         connection.execute(
@@ -373,3 +381,76 @@ def update_system_settings(settings: dict) -> None:
                 (str(v), k)
             )
         connection.commit()
+
+
+def global_search(query: str) -> dict:
+    """Tìm kiếm camera và biển số xe"""
+    results = {
+        "cameras": [],
+        "plates": []
+    }
+    if not query:
+        return results
+        
+    q = f"%{query}%"
+    with connect() as connection:
+        # 1. Tìm camera
+        cam_rows = connection.execute(
+            "SELECT id, ten_camera, mo_ta, trang_thai_hoat_dong FROM camera WHERE ten_camera LIKE ? OR mo_ta LIKE ? LIMIT 5",
+            (q, q)
+        ).fetchall()
+        results["cameras"] = [dict(row) for row in cam_rows]
+        
+        # 2. Tìm biển số
+        plate_rows = connection.execute(
+            """
+            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, duong_dan_anh as image_paths 
+            FROM bien_so_phat_hien 
+            WHERE bien_so LIKE ? 
+            ORDER BY ngay_cap_nhat DESC LIMIT 5
+            """,
+            (q,)
+        ).fetchall()
+        results["plates"] = [dict(row) for row in plate_rows]
+        
+    return results
+
+
+def fix_image_paths() -> int:
+    """Cập nhật đường dẫn ảnh cũ và chuẩn hóa dấu gạch chéo"""
+    import os
+    count = 0
+    with connect() as connection:
+        # 1. Chuẩn hóa dấu gạch ngược \ thành gạch xuôi /
+        connection.execute("UPDATE vi_pham_do_xe SET duong_dan_anh = REPLACE(duong_dan_anh, '\\', '/')")
+        connection.execute("UPDATE bien_so_phat_hien SET duong_dan_anh = REPLACE(duong_dan_anh, '\\', '/')")
+        
+        # 2. Đổi runtime thành logs nếu còn sót
+        connection.execute("UPDATE vi_pham_do_xe SET duong_dan_anh = REPLACE(duong_dan_anh, 'runtime/violations/', 'logs/violations/')")
+        connection.execute("UPDATE bien_so_phat_hien SET duong_dan_anh = REPLACE(duong_dan_anh, 'runtime/license_plates/', 'logs/plates/')")
+        
+        # 3. Xử lý trường hợp vi phạm chỉ lưu thư mục (ID_xxx/)
+        # Chúng ta cần tìm file ảnh thực sự bên trong
+        rows = connection.execute("SELECT id, duong_dan_anh FROM vi_pham_do_xe WHERE duong_dan_anh LIKE '%/'").fetchall()
+        for row in rows:
+            vid, path = row["id"], row["duong_dan_anh"]
+            if not path: continue
+            
+            full_path = os.path.join(os.getcwd(), path.replace('/', os.sep))
+            if os.path.isdir(full_path):
+                # Tìm file .jpg bên trong (ưu tiên combined_alert.jpg)
+                found_img = None
+                for root, dirs, files in os.walk(full_path):
+                    for f in files:
+                        if f.endswith('.jpg'):
+                            found_img = os.path.join(root, f).replace(os.getcwd(), '').replace(os.sep, '/').lstrip('/')
+                            if 'combined_alert' in f:
+                                break
+                    if found_img: break
+                
+                if found_img:
+                    connection.execute("UPDATE vi_pham_do_xe SET duong_dan_anh = ? WHERE id = ?", (found_img, vid))
+                    count += 1
+        
+        connection.commit()
+    return count

@@ -103,7 +103,7 @@ function displayViolations(violations) {
                             </td>
                             <td style="text-align: center; display: flex; gap: 8px; justify-content: center; align-items: center;">
                                 ${v.frame_path ? `
-                                    <a href="/${v.frame_path}" target="_blank" class="button secondary xs">
+                                    <a href="/${v.frame_path.replace(/^\/+/,'')}" target="_blank" class="button secondary xs">
                                         📷 Ảnh
                                     </a>
                                 ` : ''}

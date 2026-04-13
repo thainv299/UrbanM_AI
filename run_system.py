@@ -13,4 +13,4 @@ if __name__ == "__main__":
     print("="*50)
 
     # Reload=False để đảm bảo ổn định trong môi trường production/testing
-    uvicorn.run("frontend.app:app", host="0.0.0.0", port=5000, reload=False)
+    uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=False)

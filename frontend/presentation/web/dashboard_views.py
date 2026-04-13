@@ -60,3 +60,10 @@ async def api_update_settings(request: Request, user=Depends(login_required)):
         return {"ok": True, "message": "Cấu hình hệ thống đã được cập nhật."}
     except Exception as e:
         return {"ok": False, "message": f"Lỗi: {str(e)}"}
+
+@dashboard_router.get("/api/search")
+async def api_global_search(q: str = "", user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+    results = container.dashboard_use_cases.search(q)
+    return {"ok": True, "results": results}
