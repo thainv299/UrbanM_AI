@@ -31,13 +31,14 @@ from database.sqlite_db import (
 from paddleocr import PaddleOCR
 from collections import deque
 
-TRAFFIC_LABELS = {"person", "car", "motorcycle", "bus", "truck"}
+TRAFFIC_LABELS = {"person", "bicycle", "car", "motorcycle", "bus", "truck"}
 VEHICLE_LABELS = {"car", "motorcycle", "bus", "truck"}
 PARKING_LABELS = {"car", "bus", "truck"}
 LICENSE_PLATE_LABELS = {"license_plate", "licenseplate", "number_plate", "licence_plate"}
 DETECTABLE_LABELS = TRAFFIC_LABELS | LICENSE_PLATE_LABELS
 BOX_COLORS = {
     "person": (0, 255, 0),
+    "bicycle": (255, 127, 0),
     "car": (255, 255, 0),
     "motorcycle": (0, 255, 255),
     "bus": (0, 165, 255),
