@@ -4,12 +4,14 @@ import cv2
 from datetime import datetime
 
 class ALPRLogger:
-    def __init__(self, disappear_threshold=1800):
+    def __init__(self, disappear_threshold=1800, db_callback=None, id_camera=0):
         self.logs_dir = "logs"
         self.plates_dir = os.path.join(self.logs_dir, "plates")
         self.csv_path = os.path.join(self.logs_dir, "ALPR_log.csv")
         self.disappear_threshold = disappear_threshold
         self.plate_sessions = {}
+        self.db_callback = db_callback
+        self.id_camera = id_camera
         
         os.makedirs(self.plates_dir, exist_ok=True)
         
@@ -53,3 +55,18 @@ class ALPRLogger:
         with open(self.csv_path, 'a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), current_frame, plate_text, img_path])
+            
+        # Gọi callback để lưu vào Database nếu có
+        if self.db_callback:
+            # logs/plates/filename.jpg (Đường dẫn chuẩn cho web)
+            web_path = os.path.join("logs", "plates", img_name).replace(os.sep, "/")
+            try:
+                self.db_callback(
+                    license_plate=plate_text,
+                    detection_count=1,
+                    avg_confidence=0.0, # Tạm để 0.0 hoặc lấy từ OCRManager nếu cần
+                    image_paths=web_path,
+                    camera_id=self.id_camera
+                )
+            except Exception as e:
+                print(f"[ALPR Database] Lỗi khi ghi vào database: {e}")

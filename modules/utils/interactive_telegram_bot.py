@@ -6,9 +6,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "YOUR_CHAT_ID_HERE")
-
+# TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+# TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "YOUR_CHAT_ID_HERE")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8734868146:AAFJ2G2dGU2r0aJANRRtzos2N8oDurIx_7E")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "5501282225")
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 alert_manager_ref = None
 
@@ -47,14 +48,20 @@ def ack_alert_callback(call):
     except Exception as e:
         print(f"[Telegram Bot] Lỗi khi xử lý callback từ Telegram: {e}")
 
+_is_polling_started = False
+
 def start_bot_thread(manager_instance):
-    global alert_manager_ref
+    global alert_manager_ref, _is_polling_started
     alert_manager_ref = manager_instance
     
     if TELEGRAM_BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
         print("[Telegram Bot] Token chưa cài đặt. Luồng chờ tin nhắn sẽ không được khởi động.")
         return
         
+    if _is_polling_started:
+        return
+        
+    _is_polling_started = True
     polling_thread = threading.Thread(target=bot.infinity_polling, daemon=True)
     polling_thread.start()
     print("[Telegram Bot] Luồng kết nối trực tiếp BOT Telegram đã khởi động thành công.")

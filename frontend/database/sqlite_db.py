@@ -81,12 +81,13 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 bien_so TEXT NOT NULL,
                 ngay_phat_hien TEXT NOT NULL,
+                thoi_gian_phat_hien TEXT,
                 so_lan_phat_hien INTEGER NOT NULL DEFAULT 1,
                 do_chinh_xac_tb REAL DEFAULT 0.0,
                 duong_dan_anh TEXT,
+                id_camera INTEGER DEFAULT 0,
                 ngay_tao TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                ngay_cap_nhat TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(bien_so, ngay_phat_hien)
+                ngay_cap_nhat TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
 
             CREATE TABLE IF NOT EXISTS lich_su_phuong_tien (
@@ -112,6 +113,16 @@ def init_db() -> None:
         if "bat_phat_hien_bien_so" not in camera_columns:
             connection.execute(
                 "ALTER TABLE camera ADD COLUMN bat_phat_hien_bien_so INTEGER NOT NULL DEFAULT 1"
+            )
+
+        # Cột id_camera trong bảng biển số
+        plate_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(bien_so_phat_hien)").fetchall()
+        }
+        if "id_camera" not in plate_columns:
+            connection.execute(
+                "ALTER TABLE bien_so_phat_hien ADD COLUMN id_camera INTEGER DEFAULT 0"
             )
 
         # Cấu hình mặc định
@@ -165,12 +176,21 @@ def get_illegal_parking_violations() -> list:
                    pv.ngay_tao as created_at, c.ten_camera as camera_name
             FROM vi_pham_do_xe pv
             LEFT JOIN camera c ON pv.id_camera = c.id
-            WHERE pv.da_giai_quyet = 0
-            ORDER BY pv.thoi_gian_vi_pham DESC
-            LIMIT 10
+            ORDER BY pv.da_giai_quyet ASC, pv.thoi_gian_vi_pham DESC
+            LIMIT 50
             """
         ).fetchall()
     return [dict(row) for row in rows]
+
+def resolve_parking_violation(violation_id: int) -> bool:
+    """Đánh dấu vi phạm đỗ xe đã được giải quyết"""
+    with connect() as connection:
+        cursor = connection.execute(
+            "UPDATE vi_pham_do_xe SET da_giai_quyet = 1 WHERE id = ?",
+            (violation_id,)
+        )
+        connection.commit()
+        return cursor.rowcount > 0
 
 
 def get_congestion_count() -> int:
@@ -185,7 +205,23 @@ def get_congestion_count() -> int:
             """,
             (today,)
         ).fetchone()
-    return int(row["total"]) if row["total"] else 0
+    return row["total"] if row and row["total"] else 0
+
+def get_congestion_history() -> list:
+    """Lấy lịch sử ùn tắc"""
+    with connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT n.id, n.id_camera as camera_id, n.muc_do_un_tac as congestion_level,
+                   n.thoi_gian_bat_dau as start_time, n.thoi_gian_ket_thuc as end_time,
+                   n.thoi_gian_keo_dai_giay as duration_seconds, c.ten_camera as camera_name
+            FROM nhat_ky_un_tac n
+            LEFT JOIN camera c ON n.id_camera = c.id
+            ORDER BY n.thoi_gian_bat_dau DESC
+            LIMIT 50
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def log_vehicle_count(camera_id: int, count: int, recorded_date: str = None) -> None:
@@ -210,6 +246,10 @@ def log_parking_violation(camera_id: int, license_plate: str = None, violation_t
     from datetime import datetime
     if violation_time is None:
         violation_time = datetime.now().isoformat()
+    
+    # Đảm bảo đường dẫn lưu vào DB là tương đối và đúng thư mục logs/violations/
+    if frame_path and "runtime/violations/" in frame_path:
+        frame_path = frame_path.replace("runtime/violations/", "logs/violations/")
     
     with connect() as connection:
         connection.execute(
@@ -256,26 +296,29 @@ def log_passed_vehicle(camera_id: int, bien_so_xe: str, loai_xe: str, thoi_gian_
         connection.commit()
 
 
-def log_detected_license_plate(license_plate: str, detection_count: int = 1, avg_confidence: float = 0.0, image_paths: str = None) -> None:
-    """Lưu biển số được phát hiện"""
+def log_detected_license_plate(license_plate: str, thoi_gian: str = None, ngay: str = None, detection_count: int = 1, avg_confidence: float = 0.0, image_paths: str = None, camera_id: int = 0) -> None:
+    """Lưu biển số được phát hiện (Nhật ký từng lần)"""
     from datetime import datetime
-    detected_date = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now()
+    if ngay is None:
+        detected_date = now.strftime("%Y-%m-%d")
+    else:
+        detected_date = ngay
+        
+    if thoi_gian is None:
+        thoi_gian = now.strftime("%H:%M:%S")
+    
+    # Đàm bảo đường dẫn đúng cho web
+    if image_paths:
+        image_paths = image_paths.replace("\\", "/").replace("runtime/license_plates/", "logs/plates/")
     
     with connect() as connection:
         connection.execute(
             """
-            INSERT INTO bien_so_phat_hien (bien_so, ngay_phat_hien, so_lan_phat_hien, do_chinh_xac_tb, duong_dan_anh)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(bien_so, ngay_phat_hien) DO UPDATE SET
-                so_lan_phat_hien = so_lan_phat_hien + ?,
-                do_chinh_xac_tb = ?,
-                duong_dan_anh = CASE 
-                    WHEN duong_dan_anh IS NULL THEN ?
-                    ELSE duong_dan_anh || ',' || ?
-                END,
-                ngay_cap_nhat = CURRENT_TIMESTAMP
+            INSERT INTO bien_so_phat_hien (bien_so, ngay_phat_hien, thoi_gian_phat_hien, so_lan_phat_hien, do_chinh_xac_tb, duong_dan_anh, id_camera)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (license_plate, detected_date, detection_count, avg_confidence, image_paths, detection_count, avg_confidence, image_paths, image_paths)
+            (license_plate, detected_date, thoi_gian, detection_count, avg_confidence, image_paths, camera_id)
         )
         connection.commit()
 
@@ -285,10 +328,10 @@ def get_detected_license_plates(limit: int = 100) -> list:
     with connect() as connection:
         rows = connection.execute(
             """
-            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, so_lan_phat_hien as detection_count, 
-                   do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
+            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time, 
+                   so_lan_phat_hien as detection_count, do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
             FROM bien_so_phat_hien
-            ORDER BY ngay_cap_nhat DESC
+            ORDER BY ngay_phat_hien DESC, thoi_gian_phat_hien DESC
             LIMIT ?
             """,
             (limit,)
@@ -301,11 +344,11 @@ def get_license_plate_by_date(detected_date: str) -> list:
     with connect() as connection:
         rows = connection.execute(
             """
-            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, so_lan_phat_hien as detection_count, 
-                   do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
+            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time,
+                   so_lan_phat_hien as detection_count, do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
             FROM bien_so_phat_hien
             WHERE ngay_phat_hien = ?
-            ORDER BY bien_so ASC
+            ORDER BY thoi_gian_phat_hien DESC
             """,
             (detected_date,)
         ).fetchall()
@@ -348,3 +391,76 @@ def update_system_settings(settings: dict) -> None:
                 (str(v), k)
             )
         connection.commit()
+
+
+def global_search(query: str) -> dict:
+    """Tìm kiếm camera và biển số xe"""
+    results = {
+        "cameras": [],
+        "plates": []
+    }
+    if not query:
+        return results
+        
+    q = f"%{query}%"
+    with connect() as connection:
+        # 1. Tìm camera
+        cam_rows = connection.execute(
+            "SELECT id, ten_camera, mo_ta, trang_thai_hoat_dong FROM camera WHERE ten_camera LIKE ? OR mo_ta LIKE ? LIMIT 5",
+            (q, q)
+        ).fetchall()
+        results["cameras"] = [dict(row) for row in cam_rows]
+        
+        # 2. Tìm biển số
+        plate_rows = connection.execute(
+            """
+            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, duong_dan_anh as image_paths 
+            FROM bien_so_phat_hien 
+            WHERE bien_so LIKE ? 
+            ORDER BY ngay_cap_nhat DESC LIMIT 5
+            """,
+            (q,)
+        ).fetchall()
+        results["plates"] = [dict(row) for row in plate_rows]
+        
+    return results
+
+
+def fix_image_paths() -> int:
+    """Cập nhật đường dẫn ảnh cũ và chuẩn hóa dấu gạch chéo"""
+    import os
+    count = 0
+    with connect() as connection:
+        # 1. Chuẩn hóa dấu gạch ngược \ thành gạch xuôi /
+        connection.execute("UPDATE vi_pham_do_xe SET duong_dan_anh = REPLACE(duong_dan_anh, '\\', '/')")
+        connection.execute("UPDATE bien_so_phat_hien SET duong_dan_anh = REPLACE(duong_dan_anh, '\\', '/')")
+        
+        # 2. Đổi runtime thành logs nếu còn sót
+        connection.execute("UPDATE vi_pham_do_xe SET duong_dan_anh = REPLACE(duong_dan_anh, 'runtime/violations/', 'logs/violations/')")
+        connection.execute("UPDATE bien_so_phat_hien SET duong_dan_anh = REPLACE(duong_dan_anh, 'runtime/license_plates/', 'logs/plates/')")
+        
+        # 3. Xử lý trường hợp vi phạm chỉ lưu thư mục (ID_xxx/)
+        # Chúng ta cần tìm file ảnh thực sự bên trong
+        rows = connection.execute("SELECT id, duong_dan_anh FROM vi_pham_do_xe WHERE duong_dan_anh LIKE '%/'").fetchall()
+        for row in rows:
+            vid, path = row["id"], row["duong_dan_anh"]
+            if not path: continue
+            
+            full_path = os.path.join(os.getcwd(), path.replace('/', os.sep))
+            if os.path.isdir(full_path):
+                # Tìm file .jpg bên trong (ưu tiên combined_alert.jpg)
+                found_img = None
+                for root, dirs, files in os.walk(full_path):
+                    for f in files:
+                        if f.endswith('.jpg'):
+                            found_img = os.path.join(root, f).replace(os.getcwd(), '').replace(os.sep, '/').lstrip('/')
+                            if 'combined_alert' in f:
+                                break
+                    if found_img: break
+                
+                if found_img:
+                    connection.execute("UPDATE vi_pham_do_xe SET duong_dan_anh = ? WHERE id = ?", (found_img, vid))
+                    count += 1
+        
+        connection.commit()
+    return count

@@ -8,6 +8,7 @@ from database.sqlite_db import (
     get_congestion_count,
     get_system_settings,
     update_system_settings,
+    global_search,
 )
 
 
@@ -46,3 +47,6 @@ class DashboardUseCases:
 
     def update_settings(self, settings: Dict[str, Any]) -> None:
         update_system_settings(settings)
+
+    def search(self, query: str) -> Dict[str, Any]:
+        return global_search(query)

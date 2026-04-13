@@ -34,19 +34,20 @@
             </label>
 
             <label class="field">
-                <span>Đường dẫn Model YOLO</span>
-                <input type="text" name="model_path" value="{{ default_model_path }}"
-                    style="font-family: var(--font-mono); font-size: 0.82rem;">
+                <span>Chọn Model YOLO</span>
+                <select name="model_path" id="model_path_select">
+                    {% for model_file in available_models %}
+                    {% set full_model_path = "models/" ~ model_file %}
+                    <option value="{{ full_model_path }}" {% if full_model_path == default_model_path %}selected{% endif %}>
+                        {{ model_file }}
+                    </option>
+                    {% endfor %}
+                </select>
             </label>
 
             <label class="field">
                 <span>Tải lên Tệp Video</span>
                 <input type="file" name="video_file" accept=".mp4,.avi,.mov,.mkv,.mpeg,.mpg">
-            </label>
-
-            <label class="field">
-                <span>Hoặc Đường dẫn cục bộ (Local)</span>
-                <input type="text" name="local_path" placeholder="D:\Data\video_sample.mp4">
             </label>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">

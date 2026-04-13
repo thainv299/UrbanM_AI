@@ -85,40 +85,38 @@ function displayPlates(plates) {
     }
     
     container.innerHTML = `
-        <div style="overflow-x: auto;">
-            <table style="width: 100%; font-size: 0.9rem;">
+        <div class="table-wrap">
+            <table class="data-table">
                 <thead>
-                    <tr style="border-bottom: 2px solid var(--border);">
-                        <th style="text-align: left; padding: 12px; color: var(--text-muted);">Biển Số</th>
-                        <th style="text-align: center; padding: 12px; color: var(--text-muted);">Ngày</th>
-                        <th style="text-align: center; padding: 12px; color: var(--text-muted);">Lần Phát Hiện</th>
-                        <th style="text-align: center; padding: 12px; color: var(--text-muted);">Độ Chính Xác</th>
-                        <th style="text-align: center; padding: 12px; color: var(--text-muted);">Ảnh</th>
+                    <tr>
+                        <th>Biển Số</th>
+                        <th style="text-align: center;">Ngày</th>
+                        <th style="text-align: center;">Giờ</th>
+                        <th style="text-align: center;">Độ Chính Xác</th>
+                        <th style="text-align: center;">Ảnh</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${plates.map(plate => `
-                        <tr style="border-bottom: 1px solid var(--border);">
-                            <td style="padding: 12px;">
-                                <code style="background: var(--bg-3); padding: 6px 10px; border-radius: 4px; font-weight: bold; color: var(--primary);">
-                                    ${plate.license_plate || 'N/A'}
-                                </code>
+                        <tr>
+                            <td>
+                                <strong>${plate.license_plate || 'N/A'}</strong>
                             </td>
-                            <td style="text-align: center; padding: 12px; color: var(--text-muted);">
+                            <td style="text-align: center;">
                                 ${plate.detected_date || 'N/A'}
                             </td>
-                            <td style="text-align: center; padding: 12px;">
-                                <span class="pill success">${plate.detection_count || 0}</span>
+                            <td style="text-align: center;">
+                                <span class="pill success">${plate.detected_time || '--:--:--'}</span>
                             </td>
-                            <td style="text-align: center; padding: 12px;">
-                                <span class="pill info">${((plate.avg_confidence || 0) * 100).toFixed(1)}%</span>
+                            <td style="text-align: center;">
+                                <span class="pill blue">${((plate.avg_confidence || 0) * 100).toFixed(1)}%</span>
                             </td>
-                            <td style="text-align: center; padding: 12px;">
+                            <td style="text-align: center;">
                                 ${plate.image_paths ? `
-                                    <a href="${plate.image_paths}" target="_blank" class="button secondary xs">
-                                        📷 Xem
+                                    <a href="/${plate.image_paths.split(',')[0].replace(/^\/+/,'')}" target="_blank" class="button secondary xs">
+                                        📷 Xem Ảnh
                                     </a>
-                                ` : '<span class="muted">Không có</span>'}
+                                ` : '<span class="badge muted">Không có</span>'}
                             </td>
                         </tr>
                     `).join('')}
