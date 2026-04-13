@@ -37,6 +37,26 @@ async def api_dashboard(user=Depends(login_required)):
         return user
     return {"ok": True, "stats": container.dashboard_use_cases.get_dashboard_stats()}
 
-@dashboard_router.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request):
-    return container.render_template(request, "settings.html", {"page": "settings"})
+@dashboard_router.get("/settings", response_class=HTMLResponse, name="dashboard.settings_page")
+async def settings_page(request: Request, user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+    return container.render_template(
+        request, 
+        "settings.html", 
+        {
+            "page": "settings", 
+            "settings": container.dashboard_use_cases.get_settings()
+        }
+    )
+
+@dashboard_router.post("/api/settings")
+async def api_update_settings(request: Request, user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+    try:
+        payload = await request.json()
+        container.dashboard_use_cases.update_settings(payload)
+        return {"ok": True, "message": "Cấu hình hệ thống đã được cập nhật."}
+    except Exception as e:
+        return {"ok": False, "message": f"Lỗi: {str(e)}"}

@@ -97,6 +97,11 @@ def init_db() -> None:
                 thoi_gian_di_qua TEXT NOT NULL,
                 ngay_tao TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS cau_hinh_he_thong (
+                khoa TEXT PRIMARY KEY,
+                gia_tri TEXT
+            );
             """
         )
 
@@ -107,6 +112,22 @@ def init_db() -> None:
         if "bat_phat_hien_bien_so" not in camera_columns:
             connection.execute(
                 "ALTER TABLE camera ADD COLUMN bat_phat_hien_bien_so INTEGER NOT NULL DEFAULT 1"
+            )
+
+        # Cấu hình mặc định
+        default_settings = {
+            "confidence": "0.32",
+            "frame_skip": "1",
+            "iou_threshold": "0.45",
+            "congestion_threshold": "70",
+            "parking_violation_time": "30",
+            "log_retention": "30_days",
+            "evidence_format": "jpg"
+        }
+        for k, v in default_settings.items():
+            connection.execute(
+                "INSERT OR IGNORE INTO cau_hinh_he_thong (khoa, gia_tri) VALUES (?, ?)",
+                (k, v)
             )
 
         connection.execute(
@@ -298,3 +319,32 @@ def get_dashboard_stats_data() -> dict:
         "illegal_parking_violations": get_illegal_parking_violations(),
         "congestion_count": get_congestion_count(),
     }
+
+
+def get_system_settings() -> dict:
+    """Lấy tất cả cấu hình hệ thống"""
+    with connect() as connection:
+        rows = connection.execute("SELECT khoa, gia_tri FROM cau_hinh_he_thong").fetchall()
+        # Chuyển đổi sang dict với kiểu dữ liệu phù hợp
+        raw = {row["khoa"]: row["gia_tri"] for row in rows}
+        
+        # Parse giá trị số
+        processed = {}
+        for k, v in raw.items():
+            if k in ["confidence", "iou_threshold"]:
+                processed[k] = float(v)
+            elif k in ["frame_skip", "congestion_threshold", "parking_violation_time"]:
+                processed[k] = int(v)
+            else:
+                processed[k] = v
+        return processed
+
+def update_system_settings(settings: dict) -> None:
+    """Cập nhật các cấu hình hệ thống"""
+    with connect() as connection:
+        for k, v in settings.items():
+            connection.execute(
+                "UPDATE cau_hinh_he_thong SET gia_tri = ? WHERE khoa = ?",
+                (str(v), k)
+            )
+        connection.commit()

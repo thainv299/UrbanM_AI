@@ -6,6 +6,8 @@ from database.sqlite_db import (
     get_total_vehicle_count,
     get_illegal_parking_violations,
     get_congestion_count,
+    get_system_settings,
+    update_system_settings,
 )
 
 
@@ -38,3 +40,9 @@ class DashboardUseCases:
             "parking_violations": parking_violations,
             "congestion_count": congestion_count,
         }
+
+    def get_settings(self) -> Dict[str, Any]:
+        return get_system_settings()
+
+    def update_settings(self, settings: Dict[str, Any]) -> None:
+        update_system_settings(settings)
