@@ -101,7 +101,6 @@ def is_valid_vn_plate(text):
 def run_ocr(ocr_reader, img_bgr):
     # Lấy ảnh đã căn góc/bóp méo
     img_plate_color, status_text, dst_w, dst_h = get_plate_perspective(img_bgr)
-
     # Tiền xử lý (CLAHE)
     img_processed = preprocess_plate(img_plate_color)
     read_text = ""

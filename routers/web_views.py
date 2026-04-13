@@ -7,7 +7,8 @@ from core.security import get_current_user_from_request, require_login, require_
 from frontend.database import (
     get_user_record_by_username,
     get_dashboard_stats,
-    list_cameras
+    list_cameras,
+    list_detected_license_plates,
 )
 
 router = APIRouter()
@@ -69,3 +70,7 @@ def test_video_page(request: Request, user=Depends(require_login)):
         "cameras": list_cameras(),
         "default_model_path": str(DEFAULT_MODEL_PATH),
     })
+
+@router.get("/license-plates", response_class=HTMLResponse)
+def license_plates_page(request: Request, user=Depends(require_login)):
+    return render(request, "license_plates.html", {"page": "license-plates"})

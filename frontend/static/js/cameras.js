@@ -99,10 +99,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function formatDetection(camera) {
         return `
-            <div class="pill-row">
-                <span class="pill ${camera.enable_congestion ? "teal" : "gray"}">Tac nghen ${window.portalApi.pillText(camera.enable_congestion, "ON", "OFF")}</span>
-                <span class="pill ${camera.enable_illegal_parking ? "orange" : "gray"}">Do sai ${window.portalApi.pillText(camera.enable_illegal_parking, "ON", "OFF")}</span>
-                <span class="pill ${camera.enable_license_plate ? "teal" : "gray"}">Bien so ${window.portalApi.pillText(camera.enable_license_plate, "ON", "OFF")}</span>
+            <div class="pill-row" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <span class="pill ${camera.enable_congestion ? "teal" : "gray"}">Tắc nghẽn ${window.portalApi.pillText(camera.enable_congestion, "BẬT", "TẮT")}</span>
+                <span class="pill ${camera.enable_illegal_parking ? "orange" : "gray"}">Đỗ sai ${window.portalApi.pillText(camera.enable_illegal_parking, "BẬT", "TẮT")}</span>
+                <span class="pill ${camera.enable_license_plate ? "teal" : "gray"}">Biển số ${window.portalApi.pillText(camera.enable_license_plate, "BẬT", "TẮT")}</span>
             </div>
         `;
     }
@@ -112,10 +112,10 @@ document.addEventListener("DOMContentLoaded", () => {
             tableBody.innerHTML = `
                 <tr>
                     <td colspan="5">
-                        <div class="empty-state">
+                        <div class="empty-state centered-panel">
                             <div>
-                                <h3>Chua co camera nao</h3>
-                                <p class="muted">Them camera de hien thi preview va cau hinh detect.</p>
+                                <h3 class="muted">Chưa có camera nào</h3>
+                                <p class="muted">Thêm camera để hiển thị preview và cấu hình phát hiện.</p>
                             </div>
                         </div>
                     </td>
@@ -127,13 +127,13 @@ document.addEventListener("DOMContentLoaded", () => {
         tableBody.innerHTML = state.cameras.map((camera) => `
             <tr>
                 <td><strong>${camera.name}</strong></td>
-                <td>${camera.stream_source || "Chua co nguon"}</td>
+                <td><code class="small">${camera.stream_source || "Chưa có nguồn"}</code></td>
                 <td>${formatDetection(camera)}</td>
-                <td><span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "Dang bat" : "Dang tat"}</span></td>
+                <td><span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "Hoạt động" : "Ngoại tuyến"}</span></td>
                 <td>
-                    <div class="button-row">
-                        <button class="button secondary tiny" data-action="edit" data-id="${camera.id}">Sua</button>
-                        <button class="button danger tiny" data-action="delete" data-id="${camera.id}">Xoa</button>
+                    <div class="button-row" style="display: flex; gap: 8px;">
+                        <button class="button secondary tiny" data-action="edit" data-id="${camera.id}">Sửa</button>
+                        <button class="button danger tiny" data-action="delete" data-id="${camera.id}" style="background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2);">Xóa</button>
                     </div>
                 </td>
             </tr>
@@ -143,10 +143,10 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderPreviewGrid() {
         if (!state.cameras.length) {
             previewGrid.innerHTML = `
-                <div class="empty-state panel full-span">
+                <div class="empty-state panel full-span centered-panel">
                     <div>
-                        <h3>Chua co camera de hien thi</h3>
-                        <p class="muted">Sau khi them camera, anh preview se duoc lam moi tu dong.</p>
+                        <h3 class="muted">Chưa có camera để hiển thị</h3>
+                        <p class="muted">Sau khi thêm camera, ảnh preview sẽ được làm mới tự động.</p>
                     </div>
                 </div>
             `;
@@ -155,24 +155,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
         previewGrid.innerHTML = state.cameras.map((camera) => `
             <article class="camera-preview-card">
-                <img
-                    src="/api/cameras/${camera.id}/snapshot?ts=${Date.now()}"
-                    alt="Preview ${camera.name}"
-                    class="camera-preview-image"
-                    data-camera-id="${camera.id}"
-                >
+                <div class="preview-container" style="position: relative;">
+                    <img
+                        src="/api/cameras/${camera.id}/snapshot?ts=${Date.now()}"
+                        alt="Preview ${camera.name}"
+                        class="camera-preview-image"
+                        data-camera-id="${camera.id}"
+                    >
+                    <div class="status-overlay" style="position: absolute; top: 12px; right: 12px;">
+                        <span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "LIVE" : "OFFLINE"}</span>
+                    </div>
+                </div>
                 <div class="camera-body">
                     <div class="camera-mini-head">
-                        <strong>${camera.name}</strong>
-                        <span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "Dang bat" : "Tat"}</span>
+                        <h3>${camera.name}</h3>
                     </div>
-                    <p class="muted small">${camera.stream_source || "Chua cau hinh nguon camera"}</p>
+                    <p class="muted small" style="margin-bottom: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Source: ${camera.stream_source || "Chưa cấu hình"}</p>
+                    
                     ${formatDetection(camera)}
-                    <div class="preview-actions">
-                        <button class="button secondary tiny" data-action="toggle-congestion" data-id="${camera.id}">Bat hoac tat tac nghen</button>
-                        <button class="button secondary tiny" data-action="toggle-parking" data-id="${camera.id}">Bat hoac tat do sai</button>
-                        <button class="button secondary tiny" data-action="toggle-license-plate" data-id="${camera.id}">Bat hoac tat bien so</button>
-                        <button class="button secondary tiny" data-action="toggle-active" data-id="${camera.id}">Bat hoac tat camera</button>
+                    
+                    <div class="preview-actions" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px;">
+                        <button class="button secondary tiny" data-action="toggle-congestion" data-id="${camera.id}">Tắc nghẽn</button>
+                        <button class="button secondary tiny" data-action="toggle-parking" data-id="${camera.id}">Đỗ sai</button>
+                        <button class="button secondary tiny" data-action="toggle-license-plate" data-id="${camera.id}">Biển số</button>
+                        <button class="button secondary tiny" data-action="toggle-active" data-id="${camera.id}">Bật/Tắt Cam</button>
                     </div>
                 </div>
             </article>

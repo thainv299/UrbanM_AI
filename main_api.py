@@ -10,7 +10,7 @@ from core.config import APP_DIR
 from frontend.database import init_db
 from core.exceptions import http_exception_handler
 
-from routers import web_views, api_users, api_cameras, api_jobs
+from routers import web_views, api_users, api_cameras, api_jobs, api_license_plates
 
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
@@ -45,3 +45,4 @@ app.include_router(web_views.router)
 app.include_router(api_users.router)
 app.include_router(api_cameras.router)
 app.include_router(api_jobs.router)
+app.include_router(api_license_plates.router)
