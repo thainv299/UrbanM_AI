@@ -58,6 +58,18 @@ class JobUseCases:
                 return True
         return False
 
+    def stop_job(self, job_id: str) -> bool:
+        with self.job_lock:
+            job = self.jobs.get(job_id)
+            if job and job.status in {"queued", "running"}:
+                job.status = "aborted"
+                job.message = "Đã dừng quá trình phân tích bởi người dùng."
+                # Xóa sự kiện tạm dừng nếu có để tránh thread bị kẹt khi ngủ
+                if job_id in self.pause_events:
+                    self.pause_events[job_id].clear() 
+                return True
+        return False
+
     def resume_job(self, job_id: str) -> bool:
         with self.job_lock:
             job = self.jobs.get(job_id)

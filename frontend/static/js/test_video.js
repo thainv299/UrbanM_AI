@@ -1,28 +1,30 @@
-document.addEventListener("DOMContentLoaded", () => {
-    const form = document.getElementById("test-video-form");
-    const feedback = document.getElementById("test-job-feedback");
-    const statusPanel = document.getElementById("job-status-panel");
-    const viewerPanel = document.getElementById("viewer-panel");
-    const streamOutput = document.getElementById("stream-output");
-    const streamOutputNote = document.getElementById("stream-output-note");
-    const resultSummary = document.getElementById("result-summary");
-    const submitButton = document.getElementById("submit-test-job");
-    const uploadInput = form?.querySelector('input[name="video_file"]');
-    const featureCheckboxes = form ? Array.from(form.querySelectorAll('input[type="checkbox"][name^="enable_"]')) : [];
+// Initialize immediately since script loads at end of page (after DOM is ready)
+function initTestVideoForm() {
+const form = document.getElementById("test-video-form");
+const feedback = document.getElementById("test-job-feedback");
+const statusPanel = document.getElementById("job-status-panel");
+const viewerPanel = document.getElementById("viewer-panel");
+const streamOutput = document.getElementById("stream-output");
+const streamOutputNote = document.getElementById("stream-output-note");
+const resultSummary = document.getElementById("result-summary");
+const submitButton = document.getElementById("submit-test-job");
+const uploadInput = form?.querySelector('input[name="video_file"]');
+const featureCheckboxes = form ? Array.from(form.querySelectorAll('input[type="checkbox"][name^="enable_"]')) : [];
 
-    const testRoiFilePicker = document.getElementById("test_roi_file_picker");
-    const testRoiPoints = document.getElementById("test_roi_points");
-    const testRoiStatus = document.getElementById("test_roi_points_status");
+const testRoiFilePicker = document.getElementById("test_roi_file_picker");
+const testRoiPoints = document.getElementById("test_roi_points");
+const testRoiStatus = document.getElementById("test_roi_points_status");
 
-    const testNoParkingFilePicker = document.getElementById("test_no_parking_file_picker");
-    const testNoParkingPoints = document.getElementById("test_no_parking_points");
-    const testNoParkingStatus = document.getElementById("test_no_parking_points_status");
+const testNoParkingFilePicker = document.getElementById("test_no_parking_file_picker");
+const testNoParkingPoints = document.getElementById("test_no_parking_points");
+const testNoParkingStatus = document.getElementById("test_no_parking_points_status");
 
-    const stopButton = document.getElementById("stop-test-job");
-    let currentJobId = null;
+const stopButton = document.getElementById("stop-test-job");
+let currentJobId = null;
 
     if (!form || !uploadInput) {
-        return;
+        console.error("Form hoặc input video không tìm thấy");
+        return; 
     }
 
     function handleFileSelect(fileInput, hiddenInput, statusSpan) {
@@ -296,4 +298,71 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("beforeunload", () => {
         stopPolling();
     });
-});
+
+    // Show "Draw ROI" buttons only after video is selected
+    const videoFileInput = form?.querySelector('input[name="video_file"]');
+    let firstFrameDataUrl = null;
+
+    if (videoFileInput) {
+        videoFileInput.addEventListener("change", (e) => {
+            const hasVideo = videoFileInput.files && videoFileInput.files.length > 0;
+            const buttons = document.querySelectorAll(".roi-draw-btn");
+            buttons.forEach((btn) => {
+                btn.style.display = hasVideo ? "inline-block" : "none";
+            });
+
+            if (hasVideo) {
+                const file = videoFileInput.files[0];
+                const videoUrl = URL.createObjectURL(file);
+                const video = document.createElement("video");
+                video.src = videoUrl;
+                video.addEventListener("loadedmetadata", () => {
+                    video.currentTime = 0;
+                });
+                video.addEventListener("seeked", () => {
+                    const canvas = document.createElement("canvas");
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(video, 0, 0);
+                    firstFrameDataUrl = canvas.toDataURL("image/jpeg");
+                    URL.revokeObjectURL(videoUrl);
+                }, { once: true });
+            }
+        });
+    }
+
+    // Setup ROI Draw buttons
+    document.querySelectorAll(".roi-draw-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (!firstFrameDataUrl) {
+                alert("Chưa thể trích xuất frame đầu tiên. Vui lòng chọn lại video.");
+                return;
+            }
+            const targetId = btn.dataset.target;
+            
+            // Check if tool is initialized
+            if (!window.roiDrawingTool || !window.roiDrawingTool.modal) {
+                if (window.roiDrawingTool && typeof window.roiDrawingTool.init === 'function') {
+                    window.roiDrawingTool.init();
+                }
+            }
+
+            if (window.roiDrawingTool && typeof window.roiDrawingTool.openModal === 'function') {
+                window.roiDrawingTool.openModal(targetId, firstFrameDataUrl);
+            } else {
+                console.error("roiDrawingTool is not properly initialized");
+                alert("Công cụ vẽ ROI chưa sẵn sàng. Vui lòng thử lại sau giây lát.");
+            }
+        });
+    });
+}
+
+// Khởi tạo form
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTestVideoForm);
+} else {
+    initTestVideoForm();
+}
+

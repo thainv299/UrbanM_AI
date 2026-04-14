@@ -232,7 +232,7 @@ class App:
             self.update_status("Đang nhận diện...", "green")
 
             cap = cv2.VideoCapture(self.video_path)
-            target_classes = ["person", "car", "motorcycle", "license_plate", "bus", "truck"]
+            target_classes = ["person", "bicycle", "car", "motorcycle", "license_plate", "bus", "truck"]
             
             traffic_monitor = TrafficMonitor(roi_polygon=self.roi_polygon)
 
