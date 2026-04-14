@@ -64,26 +64,51 @@ def _display_label(label_key: str) -> str:
     return translations.get(label_key, label_key.replace("_", " "))
 
 
-def _normalize_points(points: Optional[List[List[int]]]) -> Optional[List[List[int]]]:
-    if not points:
+def _normalize_points(points: Optional[List[List[Any]]], width: int, height: int) -> Optional[List[List[int]]]:
+    """
+    Chuẩn hóa danh sách điểm ROI. Hỗ trợ cả tọa độ pixel thô và tọa độ tỉ lệ (0.0 -> 1.0).
+    """
+    if not points or not isinstance(points, list):
         return None
 
-    normalized: List[List[int]] = []
-    for point in points:
-        if not isinstance(point, (list, tuple)) or len(point) != 2:
+    normalized_res: List[List[int]] = []
+    
+    # Kiểm tra xem bộ điểm này là Pixel hay Tỉ lệ (%)
+    # Nếu tất cả các giá trị đều <= 1.0 (và có ít nhất 1 điểm), ta coi là Tỉ lệ (%)
+    is_percentage = True
+    for pt in points:
+        if not pt or len(pt) < 2: continue
+        if float(pt[0]) > 1.0 or float(pt[1]) > 1.0:
+            is_percentage = False
+            break
+            
+    for pt in points:
+        if not isinstance(pt, (list, tuple)) or len(pt) != 2:
             continue
-        normalized.append([int(point[0]), int(point[1])])
+        
+        try:
+            x, y = float(pt[0]), float(pt[1])
+            if is_percentage:
+                # Nhân tỉ lệ phù hợp với khung hình thực tế
+                actual_x = int(x * width)
+                actual_y = int(y * height)
+            else:
+                # Tọa độ pixel thô
+                actual_x = int(x)
+                actual_y = int(y)
+                
+            normalized_res.append([actual_x, actual_y])
+        except (ValueError, TypeError):
+            continue
 
-    if len(normalized) < 3:
+    if len(normalized_res) < 3:
         return None
-    return normalized
-
+    return normalized_res
 
 def _to_polygon(points: Optional[List[List[int]]]) -> Optional[np.ndarray]:
-    normalized = _normalize_points(points)
-    if normalized is None:
+    if not points:
         return None
-    return np.array(normalized, dtype=np.int32)
+    return np.array(points, dtype=np.int32)
 
 
 def _full_frame_polygon(width: int, height: int) -> List[List[int]]:
@@ -179,11 +204,16 @@ def process_video(
     ideal_frame_time = 1.0 / fps if fps > 0 else 0.033
 
 
-    roi_points = _normalize_points(settings.get("roi_points")) or _full_frame_polygon(
+    roi_points = _normalize_points(settings.get("roi_points"), frame_width, frame_height) or _full_frame_polygon(
         frame_width, frame_height
     )
-    no_parking_points = _normalize_points(settings.get("no_parking_points"))
+    no_parking_points = _normalize_points(settings.get("no_parking_points"), frame_width, frame_height)
     roi_polygon = _to_polygon(roi_points)
+    
+    # Log debug để kiểm tra việc nhân tỷ lệ
+    print(f"[DEBUG] Processing Resolution: {frame_width}x{frame_height}")
+    print(f"[DEBUG] Raw ROI input: {settings.get('roi_points')}")
+    print(f"[DEBUG] Calculated ROI pixel points: {roi_points}")
 
     if roi_polygon is None:
         raise ValueError("Vùng ROI (Khu vực quan tâm) không hợp lệ.")
@@ -408,7 +438,9 @@ def process_video(
                 ocr_manager.draw_grace_period_boxes(frame, current_plate_ids)
                 ocr_manager.cleanup_memory(current_time, frame_index)
 
-            cv2.polylines(frame, [roi_polygon], True, (255, 0, 0), 2)
+            # Vẽ ROI với nét dày hơn (3) để bảo đảm hiển thị rõ trên stream
+            cv2.polylines(frame, [roi_polygon], True, (255, 0, 0), 3) 
+            
             if enable_illegal_parking:
                 parking_manager.draw_polygon_overlay(frame)
 
@@ -443,18 +475,6 @@ def process_video(
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.8,
                     (200, 200, 200),
-                    2,
-                )
-
-            if enable_license_plate:
-                plate_status = f"Số biển nhận diện: {current_license_plate_count}"
-                cv2.putText(
-                    frame,
-                    plate_status,
-                    (30, 78 if traffic_monitor is not None else 72),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    BOX_COLORS["license_plate"],
                     2,
                 )
                 latest_status = (

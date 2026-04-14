@@ -64,9 +64,16 @@ window.roiDrawingTool = {
             alert("Cần vẽ ít nhất 3 điểm!");
             return;
         }
+
+        // Chuyển đổi sang tọa độ chuẩn hóa (phần trăm 0.0 - 1.0) để đảm bảo độ chính xác trên mọi resolution
+        const normalizedPoints = this.points.map(pt => [
+            parseFloat((pt[0] / this.originalWidth).toFixed(6)),
+            parseFloat((pt[1] / this.originalHeight).toFixed(6))
+        ]);
+
         const el = document.getElementById(this.targetField);
         if (el) {
-            el.value = JSON.stringify(this.points);
+            el.value = JSON.stringify(normalizedPoints);
         }
         this.closeModal();
     },
