@@ -52,55 +52,63 @@ def _canonical_label(label: Any) -> str:
 
 
 def _display_label(label_key: str) -> str:
-    translations = {
-        "person": "người", 
-        "car": "ô tô",
-        "motorcycle": "xe máy",
-        "bus": "xe buýt",
-        "truck": "xe tải",
-    }
-    if label_key in LICENSE_PLATE_LABELS:
-        return "biển số"
-    return translations.get(label_key, label_key.replace("_", " "))
+    return label_key.replace("_", " ")
 
 
 def _normalize_points(points: Optional[List[List[Any]]], width: int, height: int) -> Optional[List[List[int]]]:
     """
     Chuẩn hóa danh sách điểm ROI. Hỗ trợ cả tọa độ pixel thô và tọa độ tỉ lệ (0.0 -> 1.0).
     """
-    if not points or not isinstance(points, list):
+def _normalize_points(points: Optional[List[List[Any]]], width: int, height: int, metadata: Dict[str, Any] = None) -> Optional[List[List[int]]]:
+    """
+    Quy đổi tọa độ từ Frontend về tọa độ Pixel của Video gốc.
+    Hỗ trợ cả 3 chế độ: Pixels tuyệt đối, Tỉ lệ % (Legacy) và Tọa độ tham chiếu (Reference).
+    """
+    if not points:
         return None
+        
+    metadata = metadata or {}
+    units = metadata.get("units")
+    ref_w = metadata.get("ref_width")
+    ref_h = metadata.get("ref_height")
 
-    normalized_res: List[List[int]] = []
+    normalized_res = []
     
-    # Kiểm tra xem bộ điểm này là Pixel hay Tỉ lệ (%)
-    # Nếu tất cả các giá trị đều <= 1.0 (và có ít nhất 1 điểm), ta coi là Tỉ lệ (%)
+    # Chế độ 1: Tọa độ tham chiếu (Reference Resolution) - Chính xác nhất
+    if units == "reference" and ref_w and ref_h:
+        scale_x = width / float(ref_w)
+        scale_y = height / float(ref_h)
+        for pt in points:
+            try:
+                actual_x = int(round(float(pt[0]) * scale_x))
+                actual_y = int(round(float(pt[1]) * scale_y))
+                normalized_res.append([actual_x, actual_y])
+            except: continue
+        return normalized_res
+
+    # Chế độ 2 & 3: Tự động nhận diện Pixel hoặc % (Legacy support)
     is_percentage = True
     for pt in points:
         if not pt or len(pt) < 2: continue
-        if float(pt[0]) > 1.0 or float(pt[1]) > 1.0:
+        val_x, val_y = pt[0], pt[1]
+        # Nếu là số nguyên > 1.0 thì coi là Pixels
+        if val_x > 1.0 or val_y > 1.0:
             is_percentage = False
             break
             
     for pt in points:
-        if not isinstance(pt, (list, tuple)) or len(pt) != 2:
-            continue
-        
         try:
             x, y = float(pt[0]), float(pt[1])
             if is_percentage:
-                # Nhân tỉ lệ phù hợp với khung hình thực tế
-                actual_x = int(x * width)
-                actual_y = int(y * height)
+                actual_x = int(round(x * width))
+                actual_y = int(round(y * height))
             else:
-                # Tọa độ pixel thô
-                actual_x = int(x)
-                actual_y = int(y)
-                
+                actual_x = int(round(x))
+                actual_y = int(round(y))
             normalized_res.append([actual_x, actual_y])
         except (ValueError, TypeError):
             continue
-
+            
     if len(normalized_res) < 3:
         return None
     return normalized_res
@@ -197,24 +205,30 @@ def process_video(
     if not capture.isOpened():
         raise RuntimeError("Không thể mở video để phân tích.")
 
+    # Đọc frame đầu tiên để lấy độ phân giải THỰC TẾ (Quan trọng để khớp với ROI vẽ từ Backend)
+    success, first_frame = capture.read()
+    if not success:
+        capture.release()
+        raise RuntimeError("Không thể đọc frame từ video.")
+    
+    frame_height, frame_width = first_frame.shape[:2]
     fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
-    frame_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280)
-    frame_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 720)
     total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     ideal_frame_time = 1.0 / fps if fps > 0 else 0.033
 
+    # Reset capture về vị trí đầu để không mất frame đầu tiên khi vào loop
+    capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-    roi_points = _normalize_points(settings.get("roi_points"), frame_width, frame_height) or _full_frame_polygon(
-        frame_width, frame_height
+    roi_points = _normalize_points(
+        settings.get("roi_points"), frame_width, frame_height, settings.get("roi_meta")
+    ) or _full_frame_polygon(frame_width, frame_height)
+    
+    no_parking_points = _normalize_points(
+        settings.get("no_parking_points"), frame_width, frame_height, settings.get("no_park_meta")
     )
-    no_parking_points = _normalize_points(settings.get("no_parking_points"), frame_width, frame_height)
+    
     roi_polygon = _to_polygon(roi_points)
     
-    # Log debug để kiểm tra việc nhân tỷ lệ
-    print(f"[DEBUG] Processing Resolution: {frame_width}x{frame_height}")
-    print(f"[DEBUG] Raw ROI input: {settings.get('roi_points')}")
-    print(f"[DEBUG] Calculated ROI pixel points: {roi_points}")
-
     if roi_polygon is None:
         raise ValueError("Vùng ROI (Khu vực quan tâm) không hợp lệ.")
 
@@ -358,7 +372,15 @@ def process_video(
                     if cv2.pointPolygonTest(roi_polygon, (center_x, center_y), False) < 0:
                         continue
 
-                    box_color = BOX_COLORS.get(label, (255, 255, 255))
+                    # Lấy màu từ BOX_COLORS hoặc tạo màu dựa trên hash của nhãn nếu không có sẵn
+                    if label in BOX_COLORS:
+                        box_color = BOX_COLORS[label]
+                    else:
+                        # Tạo màu ngẫu nhiên nhưng cố định theo tên nhãn
+                        import hashlib
+                        h = hashlib.md5(label.encode()).digest()
+                        box_color = (h[0], h[1], h[2])
+                        
                     label_text = _display_label(label)
                     display_label = label_text if track_id == -1 else f"ID:{track_id} {label_text}"
 

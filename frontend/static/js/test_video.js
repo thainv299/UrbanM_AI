@@ -304,30 +304,33 @@ function initTestVideoForm() {
     let firstFrameDataUrl = null;
 
     if (videoFileInput) {
-        videoFileInput.addEventListener("change", (e) => {
-            const hasVideo = videoFileInput.files && videoFileInput.files.length > 0;
+        videoFileInput.addEventListener("change", async (e) => {
+            const file = videoFileInput.files && videoFileInput.files[0] ? videoFileInput.files[0] : null;
+            const hasVideo = !!file;
             const buttons = document.querySelectorAll(".roi-draw-btn");
             buttons.forEach((btn) => {
                 btn.style.display = hasVideo ? "inline-block" : "none";
             });
 
             if (hasVideo) {
-                const file = videoFileInput.files[0];
-                const videoUrl = URL.createObjectURL(file);
-                const video = document.createElement("video");
-                video.src = videoUrl;
-                video.addEventListener("loadedmetadata", () => {
-                    video.currentTime = 0;
-                });
-                video.addEventListener("seeked", () => {
-                    const canvas = document.createElement("canvas");
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    const ctx = canvas.getContext("2d");
-                    ctx.drawImage(video, 0, 0);
-                    firstFrameDataUrl = canvas.toDataURL("image/jpeg");
-                    URL.revokeObjectURL(videoUrl);
-                }, { once: true });
+                firstFrameDataUrl = null; // Reset
+                const formData = new FormData();
+                formData.append("video_file", file);
+
+                try {
+                    // Hiển thị trạng thái đang xử lý nếu cần
+                    console.log("Đang trích xuất frame từ Backend...");
+                    const data = await window.portalApi.submitForm("/api/test-video/extract-frame", formData);
+                    if (data.ok && data.frame_data) {
+                        firstFrameDataUrl = data.frame_data;
+                        console.log(`Đã trích xuất frame (${data.width}x${data.height}) từ Backend.`);
+                    } else {
+                        throw new Error(data.error || "Không thể lấy frame từ Backend.");
+                    }
+                } catch (error) {
+                    console.error("Lỗi lấy frame:", error);
+                    alert("Lỗi khi trích xuất frame từ Video. Hãy thử lại hoặc chọn video khác.");
+                }
             }
         });
     }
