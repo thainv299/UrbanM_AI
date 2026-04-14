@@ -224,6 +224,16 @@ async def api_pause_test_job(job_id: str, user=Depends(login_required)):
     return {"ok": True, "message": "Đã tạm dừng quá trình phân tích."}
 
 
+@test_video_router.post("/api/test-jobs/{job_id}/stop")
+async def api_stop_test_job(job_id: str, user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+    success = container.job_use_cases.stop_job(job_id)
+    if not success:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "Không thể dừng job này (có thể đã kết thúc hoặc không tồn tại)."})
+    return {"ok": True, "message": "Đã dừng quá trình phân tích."}
+
+
 @test_video_router.post("/api/test-jobs/{job_id}/resume")
 async def api_resume_test_job(job_id: str, user=Depends(login_required)):
     if isinstance(user, RedirectResponse):
