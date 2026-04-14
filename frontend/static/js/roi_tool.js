@@ -11,6 +11,8 @@ window.roiDrawingTool = {
     keydownHandler: null,
     canvasClickHandler: null,
     canvasContextMenuHandler: null,
+    originalWidth: 1,
+    originalHeight: 1,
 
     init() {
         this.modal = document.getElementById("roi-drawing-modal");
@@ -33,9 +35,12 @@ window.roiDrawingTool = {
         // Set canvas size
         const img = new Image();
         img.onload = () => {
+            this.originalWidth = img.naturalWidth || img.width;
+            this.originalHeight = img.naturalHeight || img.height;
+            
             const maxWidth = Math.min(800, window.innerWidth - 40);
             this.canvas.width = maxWidth;
-            this.canvas.height = (maxWidth / img.width) * img.height;
+            this.canvas.height = (maxWidth / this.originalWidth) * this.originalHeight;
             this.drawCanvas();
         };
         img.onerror = () => {
@@ -70,9 +75,15 @@ window.roiDrawingTool = {
 
         this.canvasClickHandler = (e) => {
             const rect = this.canvas.getBoundingClientRect();
-            const x = Math.round((e.clientX - rect.left) * (this.canvas.width / rect.width));
-            const y = Math.round((e.clientY - rect.top) * (this.canvas.height / rect.height));
-            this.points.push([x, y]);
+            // Tọa độ trên canvas hiện tại (scaled)
+            const canvasX = (e.clientX - rect.left) * (this.canvas.width / rect.width);
+            const canvasY = (e.clientY - rect.top) * (this.canvas.height / rect.height);
+            
+            // Quy đổi ngược về tọa độ gốc của video
+            const originalX = Math.round(canvasX * (this.originalWidth / this.canvas.width));
+            const originalY = Math.round(canvasY * (this.originalHeight / this.canvas.height));
+            
+            this.points.push([originalX, originalY]);
             this.drawCanvas();
         };
 
@@ -140,9 +151,21 @@ window.roiDrawingTool = {
             ctx.strokeStyle = "#00ff00";
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(this.points[0][0], this.points[0][1]);
+            
+            // Quy đổi tọa độ gốc về tọa độ canvas để vẽ
+            const getCanvasPoint = (pt) => {
+                return [
+                    pt[0] * (this.canvas.width / this.originalWidth),
+                    pt[1] * (this.canvas.height / this.originalHeight)
+                ];
+            };
+
+            const startPt = getCanvasPoint(this.points[0]);
+            ctx.moveTo(startPt[0], startPt[1]);
+            
             for (let i = 1; i < this.points.length; i++) {
-                ctx.lineTo(this.points[i][0], this.points[i][1]);
+                const pt = getCanvasPoint(this.points[i]);
+                ctx.lineTo(pt[0], pt[1]);
             }
             ctx.closePath();
             ctx.stroke();
@@ -151,8 +174,9 @@ window.roiDrawingTool = {
             // Draw points
             ctx.fillStyle = "#ff0000";
             for (let point of this.points) {
+                const pt = getCanvasPoint(point);
                 ctx.beginPath();
-                ctx.arc(point[0], point[1], 5, 0, 2 * Math.PI);
+                ctx.arc(pt[0], pt[1], 5, 0, 2 * Math.PI);
                 ctx.fill();
             }
 
