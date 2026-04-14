@@ -25,18 +25,31 @@ def _parse_polygon(value: Any) -> Optional[list]:
             data = json.loads(value)
         except json.JSONDecodeError as exc:
             raise ValidationError("Polygon JSON không hợp lệ.") from exc
-    else:
-        data = value
+    # Hỗ trợ cả định dạng list trực tiếp và định dạng object {units: "...", points: [...]}
+    is_pixels = False
+    metadata = {}
+    if isinstance(data, dict):
+        if "units" in data:
+            metadata["units"] = data["units"]
+        if "ref_width" in data:
+            metadata["ref_width"] = data["ref_width"]
+        if "ref_height" in data:
+            metadata["ref_height"] = data["ref_height"]
+            
+        if "points" in data:
+            data = data["points"]
+        
     if not isinstance(data, list):
         raise ValidationError("Polygon phải là một mảng điểm.")
-    normalized = []
+    
+    points = []
     for point in data:
-        if not isinstance(point, (list, tuple)) or len(point) != 2:
-            raise ValidationError("Mỗi điểm polygon phải có đúng 2 tọa độ.")
-        normalized.append([int(point[0]), int(point[1])])
-    if normalized and len(normalized) < 3:
+        points.append([float(point[0]), float(point[1])])
+        
+    if points and len(points) < 3:
         raise ValidationError("Polygon cần tối thiểu 3 điểm.")
-    return normalized or None
+        
+    return points or None, metadata
 
 
 def _build_test_settings(form_data: Dict[str, Any], camera: Any) -> Dict[str, Any]:
@@ -48,8 +61,15 @@ def _build_test_settings(form_data: Dict[str, Any], camera: Any) -> Dict[str, An
     roi_value = form_data.get("roi_points")
     parking_value = form_data.get("no_parking_points")
 
-    roi_points = _parse_polygon(roi_value) if roi_value not in (None, "") else None
-    no_parking_points = _parse_polygon(parking_value) if parking_value not in (None, "") else None
+    if roi_value not in (None, ""):
+        roi_points, roi_meta = _parse_polygon(roi_value)
+    else:
+        roi_points, roi_meta = (None, {})
+
+    if parking_value not in (None, ""):
+        no_parking_points, no_park_meta = _parse_polygon(parking_value)
+    else:
+        no_parking_points, no_park_meta = (None, {})
 
     if camera is not None:
         if roi_points is None:
@@ -97,7 +117,9 @@ def _build_test_settings(form_data: Dict[str, Any], camera: Any) -> Dict[str, An
         "parking_move_threshold_px": _parse_float(form_data.get("parking_move_threshold_px"), 10.0),
         "process_every_n_frames": _parse_int(form_data.get("process_every_n_frames"), 2),
         "roi_points": roi_points,
+        "roi_meta": roi_meta,
         "no_parking_points": no_parking_points,
+        "no_park_meta": no_park_meta,
     }
 
 
@@ -251,6 +273,46 @@ def serve_test_job_stream(job_id: str):
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
+
+@test_video_router.post("/api/test-video/extract-frame")
+async def api_extract_video_frame(video_file: UploadFile = File(...), user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+        
+    import cv2
+    import numpy as np
+    import tempfile
+    import os
+    import base64
+
+    # Lưu tạm video
+    suffix = Path(video_file.filename).suffix.lower()
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        content = await video_file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        cap = cv2.VideoCapture(tmp_path)
+        success, frame = cap.read()
+        cap.release()
+        
+        if not success:
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Không thể trích xuất frame từ video này."})
+            
+        # Encode frame to JPEG
+        _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        jpg_as_text = base64.b64encode(buffer).decode('utf-8')
+        
+        return {
+            "ok": True, 
+            "frame_data": f"data:image/jpeg;base64,{jpg_as_text}",
+            "width": frame.shape[1],
+            "height": frame.shape[0]
+        }
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 @test_video_router.get("/job-previews/{job_id}.jpg", name="test_video.serve_test_job_preview")
 async def serve_test_job_preview(job_id: str, user=Depends(login_required)):

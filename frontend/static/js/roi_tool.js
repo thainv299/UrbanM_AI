@@ -37,7 +37,7 @@ window.roiDrawingTool = {
         img.onload = () => {
             this.originalWidth = img.naturalWidth || img.width;
             this.originalHeight = img.naturalHeight || img.height;
-            
+
             const maxWidth = Math.min(800, window.innerWidth - 40);
             this.canvas.width = maxWidth;
             this.canvas.height = (maxWidth / this.originalWidth) * this.originalHeight;
@@ -64,9 +64,22 @@ window.roiDrawingTool = {
             alert("Cần vẽ ít nhất 3 điểm!");
             return;
         }
+
+        // Gửi tọa độ kèm kích thước tham chiếu (Reference Resolution)
+        const resultData = {
+            units: "reference",
+            ref_width: this.canvas.width,
+            ref_height: this.canvas.height,
+            points: this.points
+        };
+
+        // Ghi log để debug (Người dùng nhấn F12 để kiểm tra)
+        console.log("ROI Drawing tool v2 (Reference Resolution)");
+        console.log("Result Data to Backend:", resultData);
+
         const el = document.getElementById(this.targetField);
         if (el) {
-            el.value = JSON.stringify(this.points);
+            el.value = JSON.stringify(resultData);
         }
         this.closeModal();
     },
@@ -75,15 +88,23 @@ window.roiDrawingTool = {
 
         this.canvasClickHandler = (e) => {
             const rect = this.canvas.getBoundingClientRect();
-            // Tọa độ trên canvas hiện tại (scaled)
-            const canvasX = (e.clientX - rect.left) * (this.canvas.width / rect.width);
-            const canvasY = (e.clientY - rect.top) * (this.canvas.height / rect.height);
-            
-            // Quy đổi ngược về tọa độ gốc của video
-            const originalX = Math.round(canvasX * (this.originalWidth / this.canvas.width));
-            const originalY = Math.round(canvasY * (this.originalHeight / this.canvas.height));
-            
-            this.points.push([originalX, originalY]);
+            const style = window.getComputedStyle(this.canvas);
+            const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+            const borderTop = parseFloat(style.borderTopWidth) || 0;
+
+            // Tọa độ thực tế bên trong canvas drawing area
+            const clientX = e.clientX - rect.left - borderLeft;
+            const clientY = e.clientY - rect.top - borderTop;
+
+            // Quy đổi sang tọa độ pixel trên canvas resolution
+            const canvasX = clientX * (this.canvas.width / (rect.width - borderLeft * 2));
+            const canvasY = clientY * (this.canvas.height / (rect.height - borderTop * 2));
+
+            // Lưu tọa độ trực tiếp trên canvas tham chiếu
+            const refX = Math.round(canvasX);
+            const refY = Math.round(canvasY);
+
+            this.points.push([refX, refY]);
             this.drawCanvas();
         };
 
@@ -151,18 +172,16 @@ window.roiDrawingTool = {
             ctx.strokeStyle = "#00ff00";
             ctx.lineWidth = 2;
             ctx.beginPath();
-            
+
             // Quy đổi tọa độ gốc về tọa độ canvas để vẽ
             const getCanvasPoint = (pt) => {
-                return [
-                    pt[0] * (this.canvas.width / this.originalWidth),
-                    pt[1] * (this.canvas.height / this.originalHeight)
-                ];
+                // pt đã là tọa độ trên canvas tham chiếu nên không cần quy đổi nữa
+                return pt;
             };
 
             const startPt = getCanvasPoint(this.points[0]);
             ctx.moveTo(startPt[0], startPt[1]);
-            
+
             for (let i = 1; i < this.points.length; i++) {
                 const pt = getCanvasPoint(this.points[i]);
                 ctx.lineTo(pt[0], pt[1]);

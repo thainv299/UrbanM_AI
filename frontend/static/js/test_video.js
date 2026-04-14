@@ -1,30 +1,30 @@
 // Initialize immediately since script loads at end of page (after DOM is ready)
 function initTestVideoForm() {
-const form = document.getElementById("test-video-form");
-const feedback = document.getElementById("test-job-feedback");
-const statusPanel = document.getElementById("job-status-panel");
-const viewerPanel = document.getElementById("viewer-panel");
-const streamOutput = document.getElementById("stream-output");
-const streamOutputNote = document.getElementById("stream-output-note");
-const resultSummary = document.getElementById("result-summary");
-const submitButton = document.getElementById("submit-test-job");
-const uploadInput = form?.querySelector('input[name="video_file"]');
-const featureCheckboxes = form ? Array.from(form.querySelectorAll('input[type="checkbox"][name^="enable_"]')) : [];
+    const form = document.getElementById("test-video-form");
+    const feedback = document.getElementById("test-job-feedback");
+    const statusPanel = document.getElementById("job-status-panel");
+    const viewerPanel = document.getElementById("viewer-panel");
+    const streamOutput = document.getElementById("stream-output");
+    const streamOutputNote = document.getElementById("stream-output-note");
+    const resultSummary = document.getElementById("result-summary");
+    const submitButton = document.getElementById("submit-test-job");
+    const uploadInput = form?.querySelector('input[name="video_file"]');
+    const featureCheckboxes = form ? Array.from(form.querySelectorAll('input[type="checkbox"][name^="enable_"]')) : [];
 
-const testRoiFilePicker = document.getElementById("test_roi_file_picker");
-const testRoiPoints = document.getElementById("test_roi_points");
-const testRoiStatus = document.getElementById("test_roi_points_status");
+    const testRoiFilePicker = document.getElementById("test_roi_file_picker");
+    const testRoiPoints = document.getElementById("test_roi_points");
+    const testRoiStatus = document.getElementById("test_roi_points_status");
 
-const testNoParkingFilePicker = document.getElementById("test_no_parking_file_picker");
-const testNoParkingPoints = document.getElementById("test_no_parking_points");
-const testNoParkingStatus = document.getElementById("test_no_parking_points_status");
+    const testNoParkingFilePicker = document.getElementById("test_no_parking_file_picker");
+    const testNoParkingPoints = document.getElementById("test_no_parking_points");
+    const testNoParkingStatus = document.getElementById("test_no_parking_points_status");
 
-const stopButton = document.getElementById("stop-test-job");
-let currentJobId = null;
+    const stopButton = document.getElementById("stop-test-job");
+    let currentJobId = null;
 
     if (!form || !uploadInput) {
         console.error("Form hoặc input video không tìm thấy");
-        return; 
+        return;
     }
 
     function handleFileSelect(fileInput, hiddenInput, statusSpan) {
@@ -179,7 +179,7 @@ let currentJobId = null;
     function resetOutputView(message) {
         viewerPanel.hidden = false;
         clearStream();
-        streamOutputNote.textContent = "Luong stream se bat dau khi backend xu ly video.";
+        streamOutputNote.textContent = "Video sẽ hiển thị khi backend bắt đầu xử lý.";
         renderPendingSummary(message);
     }
 
@@ -250,14 +250,14 @@ let currentJobId = null;
         });
         const hasFile = Boolean(formData.get("video_file") && formData.get("video_file").name);
         if (!hasFile) {
-            window.portalApi.showNotice(feedback, "Hay chon file upload.", "error");
+            window.portalApi.showNotice(feedback, "Hãy chọn file upload.", "error");
             return;
         }
 
-        resetOutputView("Job dang duoc tao. Stream se bat dau ngay khi backend xu ly.");
+        resetOutputView("Job đang được tạo. Stream sẽ được hiển thị ngay khi backend xử lý.");
 
         submitButton.disabled = true;
-        renderStatus({ status: "queued", message: "Dang gui yeu cau len backend..." }, "warning");
+        renderStatus({ status: "queued", message: "Đang gửi yêu cầu về backend..." }, "warning");
 
         try {
             const data = await window.portalApi.submitForm("/api/test-jobs", formData);
@@ -304,30 +304,33 @@ let currentJobId = null;
     let firstFrameDataUrl = null;
 
     if (videoFileInput) {
-        videoFileInput.addEventListener("change", (e) => {
-            const hasVideo = videoFileInput.files && videoFileInput.files.length > 0;
+        videoFileInput.addEventListener("change", async (e) => {
+            const file = videoFileInput.files && videoFileInput.files[0] ? videoFileInput.files[0] : null;
+            const hasVideo = !!file;
             const buttons = document.querySelectorAll(".roi-draw-btn");
             buttons.forEach((btn) => {
                 btn.style.display = hasVideo ? "inline-block" : "none";
             });
 
             if (hasVideo) {
-                const file = videoFileInput.files[0];
-                const videoUrl = URL.createObjectURL(file);
-                const video = document.createElement("video");
-                video.src = videoUrl;
-                video.addEventListener("loadedmetadata", () => {
-                    video.currentTime = 0;
-                });
-                video.addEventListener("seeked", () => {
-                    const canvas = document.createElement("canvas");
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    const ctx = canvas.getContext("2d");
-                    ctx.drawImage(video, 0, 0);
-                    firstFrameDataUrl = canvas.toDataURL("image/jpeg");
-                    URL.revokeObjectURL(videoUrl);
-                }, { once: true });
+                firstFrameDataUrl = null; // Reset
+                const formData = new FormData();
+                formData.append("video_file", file);
+
+                try {
+                    // Hiển thị trạng thái đang xử lý nếu cần
+                    console.log("Đang trích xuất frame từ Backend...");
+                    const data = await window.portalApi.submitForm("/api/test-video/extract-frame", formData);
+                    if (data.ok && data.frame_data) {
+                        firstFrameDataUrl = data.frame_data;
+                        console.log(`Đã trích xuất frame (${data.width}x${data.height}) từ Backend.`);
+                    } else {
+                        throw new Error(data.error || "Không thể lấy frame từ Backend.");
+                    }
+                } catch (error) {
+                    console.error("Lỗi lấy frame:", error);
+                    alert("Lỗi khi trích xuất frame từ Video. Hãy thử lại hoặc chọn video khác.");
+                }
             }
         });
     }
@@ -341,7 +344,7 @@ let currentJobId = null;
                 return;
             }
             const targetId = btn.dataset.target;
-            
+
             // Check if tool is initialized
             if (!window.roiDrawingTool || !window.roiDrawingTool.modal) {
                 if (window.roiDrawingTool && typeof window.roiDrawingTool.init === 'function') {
