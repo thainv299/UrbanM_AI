@@ -354,7 +354,8 @@ def process_video(
                     lbl = _canonical_label(model.names[int(box.cls[0])])
                     if lbl in VEHICLE_LABELS:
                         vx1, vy1, vx2, vy2 = map(int, box.xyxy[0])
-                        valid_vehicles.append((vx1, vy1, vx2, vy2))
+                        v_track_id = int(box.id[0]) if box.id is not None else -1
+                        valid_vehicles.append((vx1, vy1, vx2, vy2, v_track_id))
 
             # Vòng lặp chính xử lý detection
             for result in results:
@@ -403,10 +404,18 @@ def process_video(
 
                     # 3. Quản lý Đỗ Xe Trái Phép
                     if label in VEHICLE_LABELS and enable_illegal_parking:
-                        # Lấy biển số đã xác nhận từ OCR nếu có
                         license_plate = None
-                        if enable_license_plate and track_id in ocr_manager.plate_confirmed:
-                            license_plate = ocr_manager.plate_confirmed[track_id]
+                        if enable_license_plate:
+                            for p_box in result.boxes:
+                                p_lbl = _canonical_label(model.names[int(p_box.cls[0])])
+                                if p_lbl in LICENSE_PLATE_LABELS:
+                                    p_tid = int(p_box.id[0]) if p_box.id is not None else -1
+                                    px1, py1, px2, py2 = map(int, p_box.xyxy[0])
+                                    pcx, pcy = (px1 + px2) // 2, (py1 + py2) // 2
+                                    if x1 <= pcx <= x2 and y1 <= pcy <= y2:
+                                        if p_tid in ocr_manager.plate_confirmed:
+                                            license_plate = ocr_manager.plate_confirmed[p_tid]
+                                        break
                         
                         display_label_p, box_color_p = parking_manager.process_vehicle(
                             frame, clean_frame, track_id, label, center_x, center_y, frame_index, bbox=(x1, y1, x2, y2), license_plate=license_plate
@@ -414,9 +423,9 @@ def process_video(
                         
                         if display_label_p:
                             display_label = display_label_p
-                            # Cập nhật plate mới nhất vào active_recordings
-                            if track_id in parking_manager.active_recordings and license_plate:
-                                parking_manager.active_recordings[track_id]['plate'] = license_plate
+                            # Cập nhật biển số mới nhất vào recording qua method chính thức
+                            if license_plate:
+                                parking_manager.update_plate(track_id, license_plate)
                             
                             # Log vi phạm vào DB ngay khi trạng thái chuyển sang VIOLATION
                             if "VIOLATION" in display_label_p and track_id not in logged_violation_track_ids:

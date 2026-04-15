@@ -17,6 +17,7 @@ from modules.traffic.traffic_monitor import TrafficMonitor
 from modules.utils.alpr_logger import ALPRLogger
 from modules.utils.traffic_alert_manager import TrafficAlertManager
 from modules.utils.interactive_telegram_bot import start_bot_thread
+from frontend.database.sqlite_db import log_parking_violation
 
 class_names = {
     0: "Person", 1: "Bicycle", 2: "Car", 3: "Motorcycle", 
@@ -244,6 +245,11 @@ class App:
             ideal_frame_time = 1.0 / video_fps
 
             self.parking_manager.setup_detection(video_fps)
+            # Set callback to log parking violations to database
+            self.parking_manager.violation_callback = log_parking_violation
+            # Get camera_id from settings if available (default to 1)
+            camera_id = 1  
+            self.parking_manager.camera_id = camera_id
 
             while cap.isOpened() and self.is_detecting:
                 ret, frame = cap.read()
@@ -271,7 +277,8 @@ class App:
                     for box in r.boxes:
                         tmp_label = self.model.names[int(box.cls[0])]
                         if tmp_label in ["car", "bus", "truck"]:
-                            valid_vehicles.append(tuple(map(int, box.xyxy[0])))
+                            v_track_id = int(box.id[0]) if box.id is not None else -1
+                            valid_vehicles.append((*map(int, box.xyxy[0]), v_track_id))
 
                     for box in r.boxes:
                         cls_id = int(box.cls[0])
@@ -297,14 +304,26 @@ class App:
                             elif label in ["car", "motorcycle", "bus", "truck"]:
                                 traffic_monitor.log_vehicle(track_id, cx, cy, current_time, bbox=(x1, y1, x2, y2))
                                 if track_id != -1:
-                                    # Get confirmed license plate from OCR manager if available
                                     license_plate = None
-                                    if self.ocr_manager and track_id in self.ocr_manager.plate_confirmed:
-                                        license_plate = self.ocr_manager.plate_confirmed[track_id]
-                                    
+                                    if self.ocr_manager:
+                                        for p_box in r.boxes:
+                                            p_lbl = self.model.names[int(p_box.cls[0])]
+                                            if p_lbl == "license_plate":
+                                                p_tid = int(p_box.id[0]) if p_box.id is not None else -1
+                                                px1, py1, px2, py2 = map(int, p_box.xyxy[0])
+                                                pcx, pcy = (px1 + px2) // 2, (py1 + py2) // 2
+                                                if x1 <= pcx <= x2 and y1 <= pcy <= y2:
+                                                    if p_tid in self.ocr_manager.plate_confirmed:
+                                                        license_plate = self.ocr_manager.plate_confirmed[p_tid]
+                                                    break                                    
                                     state_display_label, state_box_color = self.parking_manager.process_vehicle(
                                         frame, clean_frame, track_id, label, cx, cy, frame_count, bbox=(x1, y1, x2, y2), license_plate=license_plate
                                     )
+                                    
+                                    if state_display_label:
+                                        # Update plate in active_recordings if new plate was confirmed
+                                        if track_id in self.parking_manager.active_recordings and license_plate:
+                                            self.parking_manager.active_recordings[track_id]['plate'] = license_plate
                                     
                                     display_label = state_display_label if state_display_label else f"ID:{track_id} {label}"
                                     if state_box_color:

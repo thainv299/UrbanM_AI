@@ -99,6 +99,22 @@ class ParkingManager:
         self.waiting_vehicles = {}
         self.ghost_tracks = {}
         self.last_seen = {}
+        # Dict nhận cập nhật biển số async từ OCR: {track_id: plate_str}
+        self._pending_plate_updates: dict = {}
+
+    def update_plate(self, track_id: int, plate: str):
+        """
+        Cập nhật biển số xe cho một track_id từ OCR bất đồng bộ.
+        Nếu xe đang trong active_recordings, cập nhật ngay; nếu chưa, lưu vào pending
+        để áp dụng trước khi lưu bằng chứng.
+        """
+        if not plate:
+            return
+        if track_id in self.active_recordings:
+            self.active_recordings[track_id]['plate'] = plate
+        else:
+            # Lưu tạm, update_buffer sẽ áp dụng khi recording bắt đầu
+            self._pending_plate_updates[track_id] = plate
 
     def update_buffer(self, frame_copy):
         if self.frame_buffer is not None:
@@ -106,6 +122,10 @@ class ParkingManager:
             
             to_delete = []
             for track_id, record_data in self.active_recordings.items():
+                # Áp dụng cập nhật biển số đang chờ (OCR async)
+                if track_id in self._pending_plate_updates:
+                    record_data['plate'] = self._pending_plate_updates.pop(track_id)
+
                 record_data['frames'].append(frame_copy.copy())
                 record_data['frames_needed'] -= 1
                 if record_data['frames_needed'] <= 0:
@@ -117,18 +137,29 @@ class ParkingManager:
                 del self.active_recordings[tid]
 
     def _send_warning_thread(self, img_t0, caption):
-        img_path = os.path.join("logs", "violations", f"temp_warning_{now_ts()}.jpg")
+        temp_dir = os.path.join("logs", "violations", "_temp")
+        os.makedirs(temp_dir, exist_ok=True)
+        img_path = os.path.join(temp_dir, f"temp_warning_{now_ts()}.jpg")
         cv2.imwrite(img_path, img_t0)
         send_telegram_image(img_path, caption, self.telegram_bot_token, self.telegram_chat_id)
         try: os.remove(img_path)
         except: pass
 
     def _save_evidence_and_notify_thread(self, track_id, data):
-        evt_id = f"EVT_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{track_id}"
+        now = datetime.datetime.now()
+        evt_id = f"EVT_{now.strftime('%Y%m%d_%H%M%S')}_{track_id}"
         # Dùng biển số thực nếu đọc được, fallback về ID_{track_id} nếu không có
         raw_plate = data.get('plate')
         plate_folder = raw_plate if raw_plate else f"ID_{track_id}"
-        save_dir = os.path.join("logs", "violations", plate_folder, evt_id)
+        # Cây thư mục: logs/violations/năm/tháng/ngày/biển_số/evt_id
+        save_dir = os.path.join(
+            "logs", "violations",
+            now.strftime('%Y'),
+            now.strftime('%m'),
+            now.strftime('%d'),
+            plate_folder,
+            evt_id
+        )
         os.makedirs(save_dir, exist_ok=True)
         
         img_t0_path = os.path.join(save_dir, "img_T0.jpg")
