@@ -80,7 +80,7 @@ def create_app() -> FastAPI:
     # Mount thư mục logs để phục vụ ảnh biển số và vi phạm
     LOGS_DIR = PROJECT_ROOT / "logs"
     if not LOGS_DIR.exists():
-        LOGS_DIR.mkdir()
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/logs", StaticFiles(directory=str(LOGS_DIR)), name="logs")
 
     # 5. Error Handlers
