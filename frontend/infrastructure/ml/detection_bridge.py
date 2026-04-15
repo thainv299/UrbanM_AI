@@ -24,6 +24,7 @@ from modules.utils.interactive_telegram_bot import start_bot_thread
 from database.sqlite_db import (
     log_passed_vehicle,
     log_congestion,
+    update_congestion_end_time,
     log_parking_violation,
     log_vehicle_count,
     log_detected_license_plate
@@ -272,6 +273,7 @@ def process_video(
     
     logged_vehicle_ids: set = set()  # Các xe đã ghi nhận đi qua
     last_db_traffic_level = 0  # Mức độ ùn tắc cuối cùng đã lưu DB
+    last_congestion_record_id = None  # ID của record ùn tắc cuối cùng để cập nhật end_time
     unique_passed_count = 0
     violation_events: List[Dict[str, Any]] = []  # Danh sách vi phạm (tương thích ngược với API response)
 
@@ -408,8 +410,13 @@ def process_video(
                         )
 
                     if label in VEHICLE_LABELS and enable_illegal_parking:
+                        # Get confirmed license plate from OCR manager if available
+                        license_plate = None
+                        if enable_license_plate and ocr_manager and track_id in ocr_manager.plate_confirmed:
+                            license_plate = ocr_manager.plate_confirmed[track_id]
+                        
                         display_label_p, box_color_p = parking_manager.process_vehicle(
-                            frame, clean_frame, track_id, label, center_x, center_y, frame_index, bbox=(x1, y1, x2, y2)
+                            frame, clean_frame, track_id, label, center_x, center_y, frame_index, bbox=(x1, y1, x2, y2), license_plate=license_plate
                         )
                         if display_label_p:
                             display_label = display_label_p
@@ -424,9 +431,9 @@ def process_video(
                                          # Lưu vào DB
                                          log_parking_violation(
                                              camera_id=camera_id,
-                                             license_plate=f"ID_{track_id}",
+                                             license_plate=license_plate if license_plate else f"ID_{track_id}",
                                              duration=int(stop_seconds),
-                                             frame_path=f"logs/violations/ID_{track_id}/" # Đường dẫn tương đối
+                                             frame_path=f"logs/violations/{license_plate if license_plate else f'ID_{track_id}'}/" # Đường dẫn tương đối
                                          )
 
                         if box_color_p is not None:
@@ -478,8 +485,14 @@ def process_video(
                 
                 # Ghi nhận nhật ký ùn tắc vào Database nếu mức độ thay đổi
                 if traffic_level != last_db_traffic_level:
-                    if traffic_level > 0:
-                        log_congestion(camera_id=camera_id, level=traffic_level)
+                    # Nếu từ trạng thái ùn tắc (>0) sang không ùn tắc (0), cập nhật end_time
+                    if last_db_traffic_level > 0 and traffic_level == 0 and last_congestion_record_id is not None:
+                        update_congestion_end_time(last_congestion_record_id)
+                        last_congestion_record_id = None
+                    # Nếu bắt đầu ùn tắc mới (0 -> >0), ghi log mới
+                    elif traffic_level > 0:
+                        last_congestion_record_id = log_congestion(camera_id=camera_id, level=traffic_level)
+                    
                     last_db_traffic_level = traffic_level
                 
                 max_vehicle_count = max(max_vehicle_count, traffic_monitor.vehicle_count)
@@ -532,6 +545,10 @@ def process_video(
         capture.release()
         if enable_license_plate:
             ocr_manager.stop_worker()
+        
+        # Nếu vẫn có record ùn tắc chưa đóng, cập nhật end_time
+        if last_congestion_record_id is not None:
+            update_congestion_end_time(last_congestion_record_id)
             
         # Cuối Job, ghi nhận tổng lượng xe thống kê vào Database
         log_vehicle_count(camera_id=camera_id, count=unique_passed_count)

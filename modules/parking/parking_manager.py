@@ -171,7 +171,7 @@ class ParkingManager:
             caption_vid = f"Bằng chứng Video 15s cho xe {plate_folder}"
             send_telegram_video(video_path, caption_vid, self.telegram_bot_token, self.telegram_chat_id)
 
-    def process_vehicle(self, frame, clean_frame, track_id, label, cx, cy, frame_count, bbox=None):
+    def process_vehicle(self, frame, clean_frame, track_id, label, cx, cy, frame_count, bbox=None, license_plate=None):
         """Kiểm tra và cập nhật trạng thái đỗ xe, trả về display_label và box_color mới (nếu có)"""
         if self.logic is None:
             return None, None
@@ -265,7 +265,7 @@ class ParkingManager:
                         'frames_needed': int(10 * self.fps),
                         'img_t0': img_t0,
                         'img_t1': img_t1,
-                        'plate': f"ID_{track_id}",
+                        'plate': license_plate if license_plate else f"ID_{track_id}",
                         'start_time': start_time,
                         'label': label
                     }

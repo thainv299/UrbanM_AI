@@ -37,9 +37,18 @@ class ALPRLogger:
             self._save_log(plate_text, current_frame, full_frame, plate_coords)
             
     def _save_log(self, plate_text, current_frame, full_frame, plate_coords):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        img_name = f"{timestamp}_{plate_text}_evidence.jpg"
-        img_path = os.path.join(self.plates_dir, img_name)
+        now = datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        year = now.strftime("%Y")
+        month = now.strftime("%m")
+        day = now.strftime("%d")
+        
+        # Create date-based folder structure: logs/plates/YYYY/MM/DD/
+        date_dir = os.path.join(self.plates_dir, year, month, day)
+        os.makedirs(date_dir, exist_ok=True)
+        
+        img_name = f"{plate_text}_{timestamp}.jpg"
+        img_path = os.path.join(date_dir, img_name)
         
         # Make a copy of full_frame to draw on
         evidence_frame = full_frame.copy()
@@ -54,12 +63,14 @@ class ALPRLogger:
         # Append object to csv log
         with open(self.csv_path, 'a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), current_frame, plate_text, img_path])
+            # Convert to web path (forward slashes)
+            web_path = img_path.replace(os.sep, "/")
+            writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), current_frame, plate_text, web_path])
             
         # Gọi callback để lưu vào Database nếu có
         if self.db_callback:
-            # logs/plates/filename.jpg (Đường dẫn chuẩn cho web)
-            web_path = os.path.join("logs", "plates", img_name).replace(os.sep, "/")
+            # logs/plates/YYYY/MM/DD/filename.jpg (Đường dẫn chuẩn cho web)
+            web_path = img_path.replace(os.sep, "/")
             try:
                 self.db_callback(
                     license_plate=plate_text,

@@ -297,8 +297,13 @@ class App:
                             elif label in ["car", "motorcycle", "bus", "truck"]:
                                 traffic_monitor.log_vehicle(track_id, cx, cy, current_time, bbox=(x1, y1, x2, y2))
                                 if track_id != -1:
+                                    # Get confirmed license plate from OCR manager if available
+                                    license_plate = None
+                                    if self.ocr_manager and track_id in self.ocr_manager.plate_confirmed:
+                                        license_plate = self.ocr_manager.plate_confirmed[track_id]
+                                    
                                     state_display_label, state_box_color = self.parking_manager.process_vehicle(
-                                        frame, clean_frame, track_id, label, cx, cy, frame_count, bbox=(x1, y1, x2, y2)
+                                        frame, clean_frame, track_id, label, cx, cy, frame_count, bbox=(x1, y1, x2, y2), license_plate=license_plate
                                     )
                                     
                                     display_label = state_display_label if state_display_label else f"ID:{track_id} {label}"
