@@ -5,15 +5,23 @@
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
     <h2 class="page-title" style="margin-bottom: 0;">Dashboard</h2>
-    
+
     <!-- Quick Actions -->
     <div style="display: flex; gap: 12px;">
         <a href="{{ url_for('cameras.cameras_page') }}" class="button secondary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="12" y1="8" x2="12" y2="16"></line>
+                <line x1="8" y1="12" x2="16" y2="12"></line>
+            </svg>
             Thêm Camera
         </a>
         <a href="{{ url_for('test_video.test_video_page') }}" class="button primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
             Chạy Test Video
         </a>
     </div>
@@ -25,44 +33,70 @@
         <div class="stat-card-top">
             <span class="stat-title">Người dùng</span>
             <div class="stat-icon indigo">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
             </div>
         </div>
         <div class="stat-value">{{ stats.user_count if stats and stats.user_count else '0' }}</div>
         <div class="stat-bottom"><span class="trend"></span>Tài khoản đăng ký</div>
     </div>
 
-    <div class="stat-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
+    <div class="stat-card" style="cursor: pointer;"
+        onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
         <div class="stat-card-top">
             <span class="stat-title">Tổng số xe</span>
             <div class="stat-icon amber">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="1" y="3" width="15" height="13"></rect>
+                    <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+                    <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                    <circle cx="18.5" cy="18.5" r="2.5"></circle>
+                </svg>
             </div>
         </div>
         <div class="stat-value">{{ stats.total_vehicles if stats and stats.total_vehicles else '0' }}</div>
         <div class="stat-bottom"><span class="trend"></span>Lượt xe ghi nhận được</div>
     </div>
 
-    <div class="stat-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
+    <div class="stat-card" style="cursor: pointer;"
+        onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
         <div class="stat-card-top">
             <span class="stat-title">Xe đỗ sai</span>
             <div class="stat-icon rose">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon>
+                    <line x1="15" y1="9" x2="9" y2="15"></line>
+                    <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
             </div>
         </div>
-        <div class="stat-value">{{ stats.parking_violations|length if stats and stats.parking_violations else '0' }}</div>
+        <div class="stat-value">{{ stats.parking_violations|length if stats and stats.parking_violations else '0' }}
+        </div>
         <div class="stat-bottom"><span class="trend down">!</span> Cảnh báo vi phạm</div>
     </div>
 
-    <div class="stat-card" style="cursor: pointer;" onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
+    <div class="stat-card" style="cursor: pointer;"
+        onclick="window.location.href=`{{ url_for('test_video.test_video_page') }}`">
         <div class="stat-card-top">
             <span class="stat-title">Tắc nghẽn</span>
             <div class="stat-icon emerald">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 8v4"></path>
+                    <path d="M12 16h.01"></path>
+                </svg>
             </div>
         </div>
         <div class="stat-value">{{ stats.congestion_count if stats and stats.congestion_count else '0' }}</div>
-        <div class="stat-bottom"><span class="trend"></span>Tần thuất cảnh báo</div>
+        <div class="stat-bottom"><span class="trend"></span>Tần suất cảnh báo</div>
     </div>
 </section>
 
@@ -70,7 +104,10 @@
 <section class="panel margin-top">
     <div class="panel-header">
         <h3>Thống kê lưu lượng xe</h3>
-        <select class="field" style="width: auto; padding: 6px 12px; margin-bottom: 0;"><option>Tháng này</option><option>Tháng trước</option></select>
+        <select class="field" style="width: auto; padding: 6px 12px; margin-bottom: 0;">
+            <option>Tháng này</option>
+            <option>Tháng trước</option>
+        </select>
     </div>
     <div style="position: relative; height: 350px; width: 100%;">
         <canvas id="vehicleChart"></canvas>
@@ -81,99 +118,99 @@
 
 {% block scripts %}
 <script>
-document.addEventListener("DOMContentLoaded", function() {
-    const ctx = document.getElementById('vehicleChart').getContext('2d');
-    
-    // Create gradient
-    let gradient = ctx.createLinearGradient(0, 0, 0, 400);
-    gradient.addColorStop(0, 'rgba(67, 121, 238, 0.2)');   
-    gradient.addColorStop(1, 'rgba(67, 121, 238, 0)');
+    document.addEventListener("DOMContentLoaded", function () {
+        const ctx = document.getElementById('vehicleChart').getContext('2d');
 
-    // Generate Date Labels for the month
-    const currentDate = new Date();
-    const daysInMonth = 30; // Approximation for mock data
-    const labels = Array.from({length: daysInMonth}, (_, i) => {
-        return `${(i + 1).toString().padStart(2, '0')}/${(currentDate.getMonth() + 1).toString().padStart(2, '0')}`;
-    });
+        // Create gradient
+        let gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, 'rgba(67, 121, 238, 0.2)');
+        gradient.addColorStop(1, 'rgba(67, 121, 238, 0)');
 
-    // Mock Data points (Vehicle counts)
-    const dataPoints = [
-        1250, 1420, 1380, 1550, 1800, 2100, 1950, 
-        1320, 1450, 1500, 1620, 1900, 2250, 2010,
-        1400, 1520, 1600, 1750, 2050, 2400, 2150,
-        1480, 1600, 1650, 1820, 2150, 2500, 2200,
-        1550, 1680
-    ];
-    
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Lượt xe',
-                data: dataPoints,
-                borderColor: '#4379EE',
-                borderWidth: 2,
-                backgroundColor: gradient,
-                fill: true,
-                pointBackgroundColor: '#4379EE',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2,
-                pointRadius: function(context) {
-                    const index = context.dataIndex;
-                    // Show dots every 3 days or for weekends (peaks)
-                    return (index % 3 === 0 || dataPoints[index] > 2100) ? 4 : 0;
-                },
-                pointHoverRadius: 6,
-                tension: 0.3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: '#4379EE',
-                    titleColor: '#fff',
-                    bodyColor: '#fff',
-                    padding: 10,
-                    cornerRadius: 4,
-                    displayColors: false,
-                    callbacks: {
-                        label: function(context) {
-                            return context.raw.toLocaleString() + " lượt xe";
+        // Generate Date Labels for the month
+        const currentDate = new Date();
+        const daysInMonth = 30; // Approximation for mock data
+        const labels = Array.from({ length: daysInMonth }, (_, i) => {
+            return `${(i + 1).toString().padStart(2, '0')}/${(currentDate.getMonth() + 1).toString().padStart(2, '0')}`;
+        });
+
+        // Mock Data points (Vehicle counts)
+        const dataPoints = [
+            1250, 1420, 1380, 1550, 1800, 2100, 1950,
+            1320, 1450, 1500, 1620, 1900, 2250, 2010,
+            1400, 1520, 1600, 1750, 2050, 2400, 2150,
+            1480, 1600, 1650, 1820, 2150, 2500, 2200,
+            1550, 1680
+        ];
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Lượt xe',
+                    data: dataPoints,
+                    borderColor: '#4379EE',
+                    borderWidth: 2,
+                    backgroundColor: gradient,
+                    fill: true,
+                    pointBackgroundColor: '#4379EE',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: function (context) {
+                        const index = context.dataIndex;
+                        // Show dots every 3 days or for weekends (peaks)
+                        return (index % 3 === 0 || dataPoints[index] > 2100) ? 4 : 0;
+                    },
+                    pointHoverRadius: 6,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#4379EE',
+                        titleColor: '#fff',
+                        bodyColor: '#fff',
+                        padding: 10,
+                        cornerRadius: 4,
+                        displayColors: false,
+                        callbacks: {
+                            label: function (context) {
+                                return context.raw.toLocaleString() + " lượt xe";
+                            }
                         }
                     }
-                }
-            },
-            scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: {
-                        color: '#9CA3AF',
-                        font: { size: 11 },
-                        maxTicksLimit: 10, // Avoid too many labels on x-axis
-                        maxRotation: 0
-                    }
                 },
-                y: {
-                    grid: {
-                        color: '#F3F4F6',
-                        drawBorder: false
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            color: '#9CA3AF',
+                            font: { size: 11 },
+                            maxTicksLimit: 10, // Avoid too many labels on x-axis
+                            maxRotation: 0
+                        }
                     },
-                    border: { display: false },
-                    ticks: {
-                        color: '#9CA3AF',
-                        font: { size: 12 },
-                        stepSize: 500
-                    },
-                    suggestedMin: 0,
-                    suggestedMax: 3000
+                    y: {
+                        grid: {
+                            color: '#F3F4F6',
+                            drawBorder: false
+                        },
+                        border: { display: false },
+                        ticks: {
+                            color: '#9CA3AF',
+                            font: { size: 12 },
+                            stepSize: 500
+                        },
+                        suggestedMin: 0,
+                        suggestedMax: 3000
+                    }
                 }
             }
-        }
+        });
     });
-});
 </script>
 {% endblock %}
