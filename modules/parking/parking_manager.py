@@ -17,12 +17,15 @@ class ParkingManager:
     def __init__(self, root, app_instance):
         self.root = root
         self.app = app_instance
+        self.app_instance = app_instance
         self.no_park_polygon = None
         
         # --- CẤU HÌNH ĐỖ XE TRÁI PHÉP ---
-        self.stop_seconds = 30
+        self.stop_seconds = 30.0
         self.move_thr_px = 10.0
         self.cooldown_seconds = 30.0
+        self.camera_id = 0
+        self.violation_callback = None
         self.telegram_enabled = True
         self.save_violation_frames = True
         self.telegram_bot_token = ""
@@ -33,6 +36,8 @@ class ParkingManager:
         self.fps = 30.0
         self.active_recordings = {}
         self.waiting_vehicles = {}
+        self.ghost_tracks = {}
+        self.last_seen = {}
 
     def init_ui(self):
         self.frame_no_park = tk.LabelFrame(self.root, text="3. Quản lý Vùng Cấm Đỗ", font=("Arial", 11, "bold"))
@@ -94,6 +99,22 @@ class ParkingManager:
         self.waiting_vehicles = {}
         self.ghost_tracks = {}
         self.last_seen = {}
+        # Dict nhận cập nhật biển số async từ OCR: {track_id: plate_str}
+        self._pending_plate_updates: dict = {}
+
+    def update_plate(self, track_id: int, plate: str):
+        """
+        Cập nhật biển số xe cho một track_id từ OCR bất đồng bộ.
+        Nếu xe đang trong active_recordings, cập nhật ngay; nếu chưa, lưu vào pending
+        để áp dụng trước khi lưu bằng chứng.
+        """
+        if not plate:
+            return
+        if track_id in self.active_recordings:
+            self.active_recordings[track_id]['plate'] = plate
+        else:
+            # Lưu tạm, update_buffer sẽ áp dụng khi recording bắt đầu
+            self._pending_plate_updates[track_id] = plate
 
     def update_buffer(self, frame_copy):
         if self.frame_buffer is not None:
@@ -101,6 +122,10 @@ class ParkingManager:
             
             to_delete = []
             for track_id, record_data in self.active_recordings.items():
+                # Áp dụng cập nhật biển số đang chờ (OCR async)
+                if track_id in self._pending_plate_updates:
+                    record_data['plate'] = self._pending_plate_updates.pop(track_id)
+
                 record_data['frames'].append(frame_copy.copy())
                 record_data['frames_needed'] -= 1
                 if record_data['frames_needed'] <= 0:
@@ -112,16 +137,29 @@ class ParkingManager:
                 del self.active_recordings[tid]
 
     def _send_warning_thread(self, img_t0, caption):
-        img_path = os.path.join("logs", "violations", f"temp_warning_{now_ts()}.jpg")
+        temp_dir = os.path.join("logs", "violations", "_temp")
+        os.makedirs(temp_dir, exist_ok=True)
+        img_path = os.path.join(temp_dir, f"temp_warning_{now_ts()}.jpg")
         cv2.imwrite(img_path, img_t0)
         send_telegram_image(img_path, caption, self.telegram_bot_token, self.telegram_chat_id)
         try: os.remove(img_path)
         except: pass
 
     def _save_evidence_and_notify_thread(self, track_id, data):
-        evt_id = f"EVT_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{track_id}"
-        plate_folder = data.get('plate', f"ID_{track_id}")
-        save_dir = os.path.join("logs", "violations", plate_folder, evt_id)
+        now = datetime.datetime.now()
+        evt_id = f"EVT_{now.strftime('%Y%m%d_%H%M%S')}_{track_id}"
+        # Dùng biển số thực nếu đọc được, fallback về ID_{track_id} nếu không có
+        raw_plate = data.get('plate')
+        plate_folder = raw_plate if raw_plate else f"ID_{track_id}"
+        # Cây thư mục: logs/violations/năm/tháng/ngày/biển_số/evt_id
+        save_dir = os.path.join(
+            "logs", "violations",
+            now.strftime('%Y'),
+            now.strftime('%m'),
+            now.strftime('%d'),
+            plate_folder,
+            evt_id
+        )
         os.makedirs(save_dir, exist_ok=True)
         
         img_t0_path = os.path.join(save_dir, "img_T0.jpg")
@@ -165,13 +203,30 @@ class ParkingManager:
         with open(json_path, 'w', encoding='utf-8') as jf:
             json.dump(meta, jf, indent=4)
             
+        # Gọi callback để lưu vi phạm vào Database với đầy đủ thông tin
+        if self.violation_callback:
+            try:
+                # Đường dẫn ảnh tương đối để web có thể hiển thị
+                db_image_path = os.path.join(save_dir, "combined_alert.jpg").replace("\\", "/")
+                self.violation_callback(
+                    camera_id=self.camera_id,
+                    license_plate=plate_folder,
+                    violation_time=meta['start_time'],
+                    duration=int(self.stop_seconds),
+                    frame_path=db_image_path
+                )
+            except Exception as e:
+                print(f"[ParkingManager] Lỗi gọi callback DB: {e}")
+
+        print(f"[ParkingManager] Đã lưu bằng chứng cho ID:{track_id} tại {save_dir}")
+            
         if self.telegram_enabled:
             caption_img = f"🚨 VI PHẠM CHỐT: Xe {plate_folder} đỗ sai quy định."
             send_telegram_image(combined_path, caption_img, self.telegram_bot_token, self.telegram_chat_id)
             caption_vid = f"Bằng chứng Video 15s cho xe {plate_folder}"
             send_telegram_video(video_path, caption_vid, self.telegram_bot_token, self.telegram_chat_id)
 
-    def process_vehicle(self, frame, clean_frame, track_id, label, cx, cy, frame_count, bbox=None):
+    def process_vehicle(self, frame, clean_frame, track_id, label, cx, cy, frame_count, bbox=None, license_plate=None):
         """Kiểm tra và cập nhật trạng thái đỗ xe, trả về display_label và box_color mới (nếu có)"""
         if self.logic is None:
             return None, None
@@ -220,7 +275,9 @@ class ParkingManager:
                     self.logic.states[track_id] = ginfo['logic_state']
                 if 'waiting_data' in ginfo:
                     self.waiting_vehicles[track_id] = ginfo['waiting_data']
-
+                if best_match in self.active_recordings:
+                    self.active_recordings[track_id] = self.active_recordings.pop(best_match)
+                    self.active_recordings[track_id]['track_id'] = track_id
         # Cập nhật vị trí và dấu thời gian hiện tại
         self.last_seen[track_id] = {'cx': cx, 'cy': cy, 'last_time': current_time}
 
@@ -265,9 +322,10 @@ class ParkingManager:
                         'frames_needed': int(10 * self.fps),
                         'img_t0': img_t0,
                         'img_t1': img_t1,
-                        'plate': f"ID_{track_id}",
+                        'plate': license_plate,  # Store actual plate or None - will update when OCR confirms
                         'start_time': start_time,
-                        'label': label
+                        'label': label,
+                        'track_id': track_id  # Store original track_id as fallback
                     }
                     
                     h, w = frame.shape[:2]

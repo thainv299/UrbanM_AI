@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from core.config import APP_DIR
+from pathlib import Path
+from core.config import APP_DIR, PROJECT_ROOT
 from frontend.database import init_db
 from core.exceptions import http_exception_handler
 
@@ -39,6 +40,12 @@ app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 
 # Static files
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
+
+# Mount logs directory to serve license plate images and violations
+LOGS_DIR = PROJECT_ROOT / "logs"
+if not LOGS_DIR.exists():
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/logs", StaticFiles(directory=str(LOGS_DIR)), name="logs")
 
 # Include Routers
 app.include_router(web_views.router)

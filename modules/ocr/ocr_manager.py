@@ -25,6 +25,7 @@ class OCRManager:
         self.spatial_memory = {}
         self.last_seen_plate = {}
         self.last_comparison_window = None
+        self.vehicle_plates = {} # Maps v_track_id -> confirmed_plate_string
 
     def start_worker(self):
         if not self.worker_running:
@@ -92,9 +93,11 @@ class OCRManager:
         """Xử lý lôgic chính: check spatial memory, nhận kết quả queue, gửi queue, vẽ biển số lên frame."""
         # Lọc biển số: Chỉ xử lý OCR nếu tâm biển số nằm trong ô tô/bus/truck
         is_valid_plate = False
-        for vx1, vy1, vx2, vy2 in valid_vehicles:
+        matched_v_id = -1
+        for vx1, vy1, vx2, vy2, v_id in valid_vehicles:
             if vx1 <= cx <= vx2 and vy1 <= cy <= vy2:
                 is_valid_plate = True
+                matched_v_id = v_id
                 break
         
         if not is_valid_plate:
@@ -120,6 +123,8 @@ class OCRManager:
             final_text = self.plate_confirmed[track_id]
             display_text = f"[OK] {final_text}"
             self.spatial_memory[track_id] = (cx, cy, final_text, frame_count)
+            if matched_v_id != -1:
+                self.vehicle_plates[matched_v_id] = final_text
             
         elif track_id in self.pending_results:
             # Nhận kết quả từ Queue
@@ -139,6 +144,8 @@ class OCRManager:
                     self.plate_confirmed[track_id] = best
                     display_text = f"[OK] {best}"
                     self.spatial_memory[track_id] = (cx, cy, best, frame_count)
+                    if matched_v_id != -1:
+                        self.vehicle_plates[matched_v_id] = best
                     if self.alpr_logger:
                         self.alpr_logger.process_plate(best, frame_count, res['img_before'], clean_frame, [x1, y1, x2, y2])
                 else:

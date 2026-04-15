@@ -11,10 +11,12 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
+# Thiết lập PROJECT_ROOT để import các module từ thư mục gốc
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Import các manager và database
 from modules.parking.parking_manager import ParkingManager
 from modules.traffic.traffic_monitor import TrafficMonitor
 from modules.ocr.ocr_manager import OCRManager
@@ -24,6 +26,7 @@ from modules.utils.interactive_telegram_bot import start_bot_thread
 from database.sqlite_db import (
     log_passed_vehicle,
     log_congestion,
+    update_congestion_end_time,
     log_parking_violation,
     log_vehicle_count,
     log_detected_license_plate
@@ -31,11 +34,14 @@ from database.sqlite_db import (
 from paddleocr import PaddleOCR
 from collections import deque
 
+# Nhãn nhận diện
 TRAFFIC_LABELS = {"person", "bicycle", "car", "motorcycle", "bus", "truck"}
 VEHICLE_LABELS = {"car", "motorcycle", "bus", "truck"}
 PARKING_LABELS = {"car", "bus", "truck"}
 LICENSE_PLATE_LABELS = {"license_plate", "licenseplate", "number_plate", "licence_plate"}
 DETECTABLE_LABELS = TRAFFIC_LABELS | LICENSE_PLATE_LABELS
+
+# Màu sắc cho các loại phương tiện
 BOX_COLORS = {
     "person": (0, 255, 0),
     "bicycle": (255, 127, 0),
@@ -48,17 +54,15 @@ BOX_COLORS = {
 
 
 def _canonical_label(label: Any) -> str:
+    """Chuẩn hóa label về dạng snake_case."""
     return str(label).strip().lower().replace("-", "_").replace(" ", "_")
 
 
 def _display_label(label_key: str) -> str:
+    """Chuyển key label sang dạng hiển thị."""
     return label_key.replace("_", " ")
 
 
-def _normalize_points(points: Optional[List[List[Any]]], width: int, height: int) -> Optional[List[List[int]]]:
-    """
-    Chuẩn hóa danh sách điểm ROI. Hỗ trợ cả tọa độ pixel thô và tọa độ tỉ lệ (0.0 -> 1.0).
-    """
 def _normalize_points(points: Optional[List[List[Any]]], width: int, height: int, metadata: Dict[str, Any] = None) -> Optional[List[List[int]]]:
     """
     Quy đổi tọa độ từ Frontend về tọa độ Pixel của Video gốc.
@@ -91,7 +95,6 @@ def _normalize_points(points: Optional[List[List[Any]]], width: int, height: int
     for pt in points:
         if not pt or len(pt) < 2: continue
         val_x, val_y = pt[0], pt[1]
-        # Nếu là số nguyên > 1.0 thì coi là Pixels
         if val_x > 1.0 or val_y > 1.0:
             is_percentage = False
             break
@@ -113,13 +116,16 @@ def _normalize_points(points: Optional[List[List[Any]]], width: int, height: int
         return None
     return normalized_res
 
+
 def _to_polygon(points: Optional[List[List[int]]]) -> Optional[np.ndarray]:
+    """Chuyển danh sách điểm sang mảng numpy cho OpenCV."""
     if not points:
         return None
     return np.array(points, dtype=np.int32)
 
 
 def _full_frame_polygon(width: int, height: int) -> List[List[int]]:
+    """Tạo polygon phủ toàn bộ frame."""
     return [
         [0, 0],
         [max(0, width - 1), 0],
@@ -129,6 +135,7 @@ def _full_frame_polygon(width: int, height: int) -> List[List[int]]:
 
 
 def _encode_preview_frame(frame: np.ndarray, max_width: int = 960) -> Optional[bytes]:
+    """Mã hóa frame sang JPEG để preview MJPEG."""
     if frame is None or frame.size == 0:
         return None
 
@@ -149,6 +156,7 @@ def _encode_preview_frame(frame: np.ndarray, max_width: int = 960) -> Optional[b
 
 
 def _load_model(model_path: Path) -> YOLO:
+    """Tải model YOLO, hỗ trợ TensorRT .engine."""
     model_str = str(model_path)
     if model_str.lower().endswith(".engine"):
         return YOLO(model_str, task="detect")
@@ -162,6 +170,7 @@ def _load_model(model_path: Path) -> YOLO:
             pass
     return model
 
+
 def process_video(
     input_stream: Any = None,
     input_path: str = None,
@@ -171,7 +180,7 @@ def process_video(
     pause_event: threading.Event = None,
 ) -> Dict[str, Any]:
     """
-    Xử lý video. Hỗ trợ luồng stream trực tiếp hoặc đường dẫn file truyền thống.
+    Xử lý phân tích video. Hỗ trợ luồng stream hoặc file.
     """
     import tempfile
     if input_stream is not None:
@@ -193,6 +202,7 @@ def process_video(
     if not model_path.exists():
         raise FileNotFoundError(f"Không tìm thấy mô hình YOLO tại: {model_path}")
 
+    # Các ngưỡng cấu hình
     confidence_threshold = float(settings.get("confidence_threshold", 0.32))
     enable_congestion = bool(settings.get("enable_congestion", True))
     enable_illegal_parking = bool(settings.get("enable_illegal_parking", True))
@@ -205,7 +215,7 @@ def process_video(
     if not capture.isOpened():
         raise RuntimeError("Không thể mở video để phân tích.")
 
-    # Đọc frame đầu tiên để lấy độ phân giải THỰC TẾ (Quan trọng để khớp với ROI vẽ từ Backend)
+    # Frame đầu tiên để lấy resolution THẬT
     success, first_frame = capture.read()
     if not success:
         capture.release()
@@ -216,9 +226,10 @@ def process_video(
     total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     ideal_frame_time = 1.0 / fps if fps > 0 else 0.033
 
-    # Reset capture về vị trí đầu để không mất frame đầu tiên khi vào loop
+    # Reset capture
     capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
+    # Vùng ROI
     roi_points = _normalize_points(
         settings.get("roi_points"), frame_width, frame_height, settings.get("roi_meta")
     ) or _full_frame_polygon(frame_width, frame_height)
@@ -230,7 +241,7 @@ def process_video(
     roi_polygon = _to_polygon(roi_points)
     
     if roi_polygon is None:
-        raise ValueError("Vùng ROI (Khu vực quan tâm) không hợp lệ.")
+        raise ValueError("Vùng ROI không hợp lệ.")
 
     if progress_callback is not None:
         progress_callback(
@@ -247,44 +258,42 @@ def process_video(
     model = _load_model(model_path)
     traffic_monitor = TrafficMonitor(roi_polygon=roi_polygon) if enable_congestion else None
     
-    # Khởi tạo các Manager tiêu chuẩn của dự án (Giống main.py)
-    camera_id = int(settings.get("camera_id", 0))  # Lục id camera từ settings
+    # Khởi tạo các Manager
+    camera_id = int(settings.get("camera_id", 0))
     alpr_logger = ALPRLogger(db_callback=log_detected_license_plate, id_camera=camera_id)
     traffic_alert_manager = TrafficAlertManager()
-    parking_manager = ParkingManager(None, None) 
     
-    # Cấu hình ParkingManager
+    parking_manager = ParkingManager(None, None) 
     parking_manager.no_park_polygon = _to_polygon(no_parking_points)
     parking_manager.stop_seconds = stop_seconds
     parking_manager.move_thr_px = move_threshold_px
+    parking_manager.camera_id = camera_id  # Thêm để truyền ID Camera
+    parking_manager.violation_callback = log_parking_violation  # Ủy quyền cho Manager lưu DB sau 10s
     parking_manager.setup_detection(fps)
     
-    # Đồng bộ cấu hình Telegram từ môi trường giống main.py
-    import os
+    # Telegram Bot
     parking_manager.telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     parking_manager.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
     
-    # Khởi động luồng Bot chờ lệnh (Nếu chưa chạy) để nhận nút bấm Xác nhận
     try:
         start_bot_thread(traffic_alert_manager)
     except Exception as e:
         print(f"[Telegram] Không khởi động được polling thread: {e}")
     
-    logged_vehicle_ids: set = set()  # Các xe đã ghi nhận đi qua
-    last_db_traffic_level = 0  # Mức độ ùn tắc cuối cùng đã lưu DB
+    # Flags quản lý job
+    logged_vehicle_ids: set = set()
+    logged_violation_track_ids: set = set()
+    last_db_traffic_level = 0
+    last_congestion_record_id = None
     unique_passed_count = 0
-    violation_events: List[Dict[str, Any]] = []  # Danh sách vi phạm (tương thích ngược với API response)
+    violation_events = []
 
     frame_index = 0
     last_results = None
     started_at = time.time()
-    last_progress_emit = 0.0
-    max_vehicle_count = 0
-    max_people_count = 0
-    max_license_plate_count = 0
-    max_occupancy = 0.0
-    highest_traffic_level = 0
-    congestion_frames = 0
+    latest_status = ""
+
+    # OCR Manager setup
     import logging
     logging.getLogger("ppocr").setLevel(logging.ERROR)
     ocr_reader = PaddleOCR(lang='en')
@@ -294,29 +303,23 @@ def process_video(
 
     try:
         while capture.isOpened():
-            # Kiểm tra trạng thái Tạm dừng (Pause)
+            # Xử lý Tạm dừng
             if pause_event and pause_event.is_set():
                 if progress_callback is not None:
-                    # Tạo bản sao frame để vẽ overlay "PAUSED" mà không làm hỏng frame gốc
-                    pause_frame = frame.copy() if 'frame' in locals() else np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
-                    cv2.rectangle(pause_frame, (frame_width//2 - 150, frame_height//2 - 50), 
+                    p_frame = frame.copy() if 'frame' in locals() else np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
+                    cv2.rectangle(p_frame, (frame_width//2 - 150, frame_height//2 - 50), 
                                  (frame_width//2 + 150, frame_height//2 + 50), (0, 0, 0), -1)
-                    cv2.putText(pause_frame, "TẠM DỪNG", (frame_width//2 - 100, frame_height//2 + 15), 
+                    cv2.putText(p_frame, "TẠM DỪNG", (frame_width//2 - 100, frame_height//2 + 15), 
                                 cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
-                    
-                    progress_callback(
-                        {
-                            "phase": "running_detection",
-                            "processed_frames": frame_index,
-                            "source_total_frames": total_frames,
-                            "progress_percent": round((frame_index / total_frames) * 100, 2)
-                            if total_frames
-                            else None,
-                            "elapsed_seconds": round(time.time() - started_at, 1),
-                            "latest_status": "Đang tạm dừng quá trình phân tích...",
-                            "preview_jpeg": _encode_preview_frame(pause_frame),
-                        }
-                    )
+                    progress_callback({
+                        "phase": "running_detection",
+                        "processed_frames": frame_index,
+                        "source_total_frames": total_frames,
+                        "progress_percent": round((frame_index / total_frames) * 100, 2) if total_frames else None,
+                        "elapsed_seconds": round(time.time() - started_at, 1),
+                        "latest_status": "Đang tạm dừng...",
+                        "preview_jpeg": _encode_preview_frame(p_frame),
+                    })
                 time.sleep(0.5)
                 continue
 
@@ -332,7 +335,7 @@ def process_video(
             frame_index += 1
             current_time = time.time()
 
-
+            # Tracking
             if process_stride > 1 and (frame_index - 1) % process_stride != 0 and last_results is not None:
                 results = last_results
             else:
@@ -342,28 +345,27 @@ def process_video(
             if traffic_monitor is not None:
                 traffic_monitor.reset_counters()
 
-            current_license_plate_count = 0
             current_plate_ids = set()
             valid_vehicles = []
             
+            # Tiền xử lý list xe cho OCR
             for result in results:
                 for box in result.boxes:
                     lbl = _canonical_label(model.names[int(box.cls[0])])
                     if lbl in VEHICLE_LABELS:
                         vx1, vy1, vx2, vy2 = map(int, box.xyxy[0])
-                        valid_vehicles.append((vx1, vy1, vx2, vy2))
+                        v_track_id = int(box.id[0]) if box.id is not None else -1
+                        valid_vehicles.append((vx1, vy1, vx2, vy2, v_track_id))
 
+            # Vòng lặp chính xử lý detection
             for result in results:
                 for box in result.boxes:
                     label = _canonical_label(model.names[int(box.cls[0])])
-                    if label not in DETECTABLE_LABELS:
-                        continue
-                    if label in LICENSE_PLATE_LABELS and not enable_license_plate:
-                        continue
+                    if label not in DETECTABLE_LABELS: continue
+                    if label in LICENSE_PLATE_LABELS and not enable_license_plate: continue
 
                     confidence = float(box.conf[0])
-                    if confidence < confidence_threshold:
-                        continue
+                    if confidence < confidence_threshold: continue
 
                     track_id = int(box.id[0]) if box.id is not None else -1
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -372,11 +374,10 @@ def process_video(
                     if cv2.pointPolygonTest(roi_polygon, (center_x, center_y), False) < 0:
                         continue
 
-                    # Lấy màu từ BOX_COLORS hoặc tạo màu dựa trên hash của nhãn nếu không có sẵn
+                    # Xác định màu sắc nhãn
                     if label in BOX_COLORS:
                         box_color = BOX_COLORS[label]
                     else:
-                        # Tạo màu ngẫu nhiên nhưng cố định theo tên nhãn
                         import hashlib
                         h = hashlib.md5(label.encode()).digest()
                         box_color = (h[0], h[1], h[2])
@@ -384,8 +385,8 @@ def process_video(
                     label_text = _display_label(label)
                     display_label = label_text if track_id == -1 else f"ID:{track_id} {label_text}"
 
+                    # 1. OCR Biển số
                     if label in LICENSE_PLATE_LABELS:
-                        current_license_plate_count += 1
                         if enable_license_plate and track_id != -1:
                             processed_id = ocr_manager.process_plate(
                                 frame, clean_frame, track_id, x1, y1, x2, y2, center_x, center_y, 
@@ -395,229 +396,105 @@ def process_video(
                                 current_plate_ids.add(processed_id)
                         continue
 
+                    # 2. Đếm phương tiện và người
                     if label == "person":
-                        if traffic_monitor is not None:
-                            traffic_monitor.log_person()
+                        if traffic_monitor is not None: traffic_monitor.log_person()
                     elif label in VEHICLE_LABELS and traffic_monitor is not None:
-                        traffic_monitor.log_vehicle(
-                            track_id=track_id,
-                            cx=center_x,
-                            cy=center_y,
-                            current_time=current_time,
-                            bbox=(x1, y1, x2, y2),
-                        )
+                        traffic_monitor.log_vehicle(track_id, center_x, center_y, current_time, (x1, y1, x2, y2))
 
+                    # 3. Quản lý Đỗ Xe Trái Phép
                     if label in VEHICLE_LABELS and enable_illegal_parking:
+                        license_plate = None
+                        if enable_license_plate:
+                            for p_box in result.boxes:
+                                p_lbl = _canonical_label(model.names[int(p_box.cls[0])])
+                                if p_lbl in LICENSE_PLATE_LABELS:
+                                    p_tid = int(p_box.id[0]) if p_box.id is not None else -1
+                                    px1, py1, px2, py2 = map(int, p_box.xyxy[0])
+                                    pcx, pcy = (px1 + px2) // 2, (py1 + py2) // 2
+                                    if x1 <= pcx <= x2 and y1 <= pcy <= y2:
+                                        if p_tid in ocr_manager.plate_confirmed:
+                                            license_plate = ocr_manager.plate_confirmed[p_tid]
+                                        break
+                        
                         display_label_p, box_color_p = parking_manager.process_vehicle(
-                            frame, clean_frame, track_id, label, center_x, center_y, frame_index, bbox=(x1, y1, x2, y2)
+                            frame, clean_frame, track_id, label, center_x, center_y, frame_index, bbox=(x1, y1, x2, y2), license_plate=license_plate
                         )
+                        
                         if display_label_p:
                             display_label = display_label_p
-                            # Ghi nhận vi phạm đỗ xe vào Database nếu là trạng thái VIOLATION
-                            if "VIOLATION" in display_label_p:
-                                # Tránh ghi trùng lặp bằng cách kiểm tra record trong manager hoặc track state
-                                state_info = parking_manager.logic.states.get(track_id)
-                                if state_info and state_info.get("state") == 2: # VIOLATION state
-                                     # Chúng ta chỉ lưu vào DB một lần khi vừa chuyển sang vi phạm ở vòng lặp trước đó
-                                     # Hoặc đơn giản là kiểm tra nếu manager vừa tạo record mới
-                                     if track_id in parking_manager.active_recordings:
-                                         # Lưu vào DB
-                                         log_parking_violation(
-                                             camera_id=camera_id,
-                                             license_plate=f"ID_{track_id}",
-                                             duration=int(stop_seconds),
-                                             frame_path=f"logs/violations/ID_{track_id}/" # Đường dẫn tương đối
-                                         )
+                            # Cập nhật biển số mới nhất vào recording qua method chính thức
+                            if license_plate:
+                                parking_manager.update_plate(track_id, license_plate)
+                            
+                            # Log vi phạm vào DB ngay khi trạng thái chuyển sang VIOLATION
+                            if "VIOLATION" in display_label_p and track_id not in logged_violation_track_ids:
+                                logged_violation_track_ids.add(track_id)
 
-                        if box_color_p is not None:
-                            box_color = box_color_p
+                        if box_color_p is not None: box_color = box_color_p
 
-                    # Ghi nhận phương tiện đi qua vào Database (Chỉ lưu 1 lần cho mỗi ID trong 1 Job)
+                    # 4. Lưu phương tiện đi qua
                     if track_id != -1 and track_id not in logged_vehicle_ids:
-                        log_passed_vehicle(
-                            camera_id=camera_id,
-                            bien_so_xe=f"ID_{track_id}",
-                            loai_xe=label
-                        )
+                        log_passed_vehicle(camera_id, f"ID_{track_id}", label)
                         logged_vehicle_ids.add(track_id)
                         unique_passed_count += 1
 
+                    # Vẽ frame
                     cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
-                    cv2.circle(frame, (center_x, center_y), 3, (0, 0, 255), -1)
-                    cv2.putText(
-                        frame,
-                        display_label,
-                        (x1, max(20, y1 - 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.55,
-                        box_color,
-                        2,
-                    )
+                    cv2.putText(frame, display_label, (x1, max(20, y1-10)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, box_color, 2)
 
-            max_license_plate_count = max(max_license_plate_count, current_license_plate_count)
-
-            if enable_license_plate:
-                ocr_manager.draw_grace_period_boxes(frame, current_plate_ids)
-                ocr_manager.cleanup_memory(current_time, frame_index)
-
-            # Vẽ ROI với nét dày hơn (3) để bảo đảm hiển thị rõ trên stream
-            cv2.polylines(frame, [roi_polygon], True, (255, 0, 0), 3) 
-            
-            if enable_illegal_parking:
-                parking_manager.draw_polygon_overlay(frame)
-
+            # Cập nhật Traffic Monitor
             if traffic_monitor is not None:
-                average_speed, status_text, status_color, traffic_level = (
-                    traffic_monitor.calculate_speed_and_status(current_time, frame.shape)
-                )
-                traffic_monitor.draw_status(frame, average_speed, status_text, status_color)
-                latest_status = status_text
+                avg_spd, st_txt, st_clr, lvl = traffic_monitor.calculate_speed_and_status(current_time, frame.shape)
+                traffic_monitor.draw_status(frame, avg_spd, st_txt, st_clr)
+                latest_status = st_txt
                 
-                # Cảnh báo Telegram giống main.py
-                traffic_alert_manager.update_traffic_state(traffic_level, clean_frame)
+                traffic_alert_manager.update_traffic_state(lvl, clean_frame)
                 
-                # Ghi nhận nhật ký ùn tắc vào Database nếu mức độ thay đổi
-                if traffic_level != last_db_traffic_level:
-                    if traffic_level > 0:
-                        log_congestion(camera_id=camera_id, level=traffic_level)
-                    last_db_traffic_level = traffic_level
-                
-                max_vehicle_count = max(max_vehicle_count, traffic_monitor.vehicle_count)
-                max_people_count = max(max_people_count, traffic_monitor.people_count)
-                max_occupancy = max(max_occupancy, traffic_monitor.last_occupancy)
-                highest_traffic_level = max(highest_traffic_level, traffic_level)
-                if traffic_level > 0:
-                    congestion_frames += 1
-            else:
-                latest_status = "Đã tắt tính năng tắc nghẽn"
-                cv2.putText(
-                    frame,
-                    latest_status,
-                    (30, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (200, 200, 200),
-                    2,
-                )
-                latest_status = (
-                    f"{latest_status} | {plate_status}"
-                    if latest_status
-                    else plate_status
-                )
-
-            # Xóa các thông báo feature_text và frame_index không cần thiết theo yêu cầu người dùng
-
-            # Luôn gửi frame preview để stream MJPEG mượt mà, đồng bộ với xử lý
+                if lvl != last_db_traffic_level:
+                    if last_db_traffic_level > 0 and lvl == 0 and last_congestion_record_id:
+                        update_congestion_end_time(last_congestion_record_id)
+                        last_congestion_record_id = None
+                    elif lvl > 0:
+                        last_congestion_record_id = log_congestion(camera_id, lvl)
+                    last_db_traffic_level = lvl
+            
+            # Gửi progress
             if progress_callback is not None:
-                progress_callback(
-                    {
-                        "phase": "running_detection",
-                        "processed_frames": frame_index,
-                        "source_total_frames": total_frames,
-                        "progress_percent": round((frame_index / total_frames) * 100, 2)
-                        if total_frames
-                        else None,
-                        "elapsed_seconds": round(time.time() - started_at, 1),
-                        "latest_status": latest_status,
-                        "preview_jpeg": _encode_preview_frame(frame),
-                    }
-                )
+                progress_callback({
+                    "phase": "running_detection",
+                    "processed_frames": frame_index,
+                    "source_total_frames": total_frames,
+                    "progress_percent": round((frame_index / total_frames) * 100, 2) if total_frames else None,
+                    "elapsed_seconds": round(time.time() - started_at, 1),
+                    "latest_status": latest_status,
+                    "preview_jpeg": _encode_preview_frame(frame),
+                })
 
-            # Đồng bộ hóa với tốc độ video thực tế (Real-time playback)
+            # Control FPS
             elapsed = time.time() - frame_start_time
             if elapsed < ideal_frame_time:
                 time.sleep(ideal_frame_time - elapsed)
 
     finally:
         capture.release()
-        if enable_license_plate:
-            ocr_manager.stop_worker()
-            
-        # Cuối Job, ghi nhận tổng lượng xe thống kê vào Database
-        log_vehicle_count(camera_id=camera_id, count=unique_passed_count)
+        if enable_license_plate: ocr_manager.stop_worker()
+        if last_congestion_record_id: update_congestion_end_time(last_congestion_record_id)
+        log_vehicle_count(camera_id, unique_passed_count)
         if should_cleanup_temp and input_video_path.exists():
-            import os
-            try:
-                os.unlink(input_video_path)
-            except Exception:
-                pass
-
-    processing_seconds = max(0.001, time.time() - started_at)
-    
-    # Kết quả vi phạm từ Manager
-    parking_violation_ids = (
-        sorted(list(parking_manager.logic.states.keys())) if enable_illegal_parking else []
-    )
-
-    if progress_callback is not None:
-        progress_callback(
-            {
-                "phase": "finalizing_output",
-                "processed_frames": frame_index,
-                "source_total_frames": total_frames,
-                "progress_percent": 100.0,
-                "elapsed_seconds": round(processing_seconds, 1),
-                "latest_status": "Đang hoàn tất xử lý kết quả...",
-            }
-        )
+            try: os.unlink(input_video_path)
+            except: pass
 
     return {
-        "input_path": str(input_video_path),
-        "output_path": None,
         "processed_frames": frame_index,
-        "source_total_frames": total_frames,
-        "duration_seconds": round(frame_index / fps, 2) if fps else 0.0,
-        "processing_seconds": round(processing_seconds, 2),
-        "average_processing_fps": round(frame_index / processing_seconds, 2),
-        "max_vehicle_count": max_vehicle_count,
-        "max_people_count": max_people_count,
-        "max_license_plate_count": max_license_plate_count,
-        "max_occupancy_percent": round(max_occupancy, 2),
-        "highest_traffic_level": highest_traffic_level,
-        "congestion_alert_frames": congestion_frames,
-        "parking_violation_count": len(parking_violation_ids),
-        "parking_violation_ids": parking_violation_ids,
+        "processing_seconds": round(time.time() - started_at, 2),
+        "parking_violation_count": len(logged_violation_track_ids),
+        "unique_passed_count": unique_passed_count,
         "latest_status": latest_status,
-        "roi_points": roi_points,
-        "no_parking_points": no_parking_points,
-        # Thông tin biển số OCR - Lấy từ alpr_logger sessions
-        "detected_plates_count": len(alpr_logger.plate_sessions),
-        "detected_plates": {
-            plate: {
-                "count": 1, # alpr_logger không lưu count gộp, tạm để 1
-                "avg_confidence": 1.0, 
-                "first_seen_frame": data["last_seen"],
-                "last_seen_frame": data["last_seen"],
-                "image_path": None, # Sẽ được lưu trực tiếp trong logs/plates/
-            }
-            for plate, data in alpr_logger.plate_sessions.items()
-        },
-        "feature_flags": {
-            "enable_congestion": enable_congestion,
-            "enable_illegal_parking": enable_illegal_parking,
-            "enable_license_plate": enable_license_plate,
-        },
-        "violation_events": violation_events[:20],
     }
 
 from application.interfaces.detection_interface import DetectionInterface
 
 class YoloDetectionService(DetectionInterface):
-    def process_video(
-        self,
-        input_stream: Any = None,
-        input_path: str = None,
-        input_ext: str = None,
-        settings: Dict[str, Any] = None,
-        progress_callback: Callable[[Dict[str, Any]], None] = None,
-        pause_event: Any = None
-    ) -> Dict[str, Any]:
-        return process_video(
-            input_stream=input_stream,
-            input_path=input_path,
-            input_ext=input_ext,
-            settings=settings,
-            progress_callback=progress_callback,
-            pause_event=pause_event
-        )
-
+    def process_video(self, input_stream=None, input_path=None, input_ext=None, settings=None, progress_callback=None, pause_event=None):
+        return process_video(input_stream, input_path, input_ext, settings, progress_callback, pause_event)

@@ -262,14 +262,14 @@ def log_parking_violation(camera_id: int, license_plate: str = None, violation_t
         connection.commit()
 
 
-def log_congestion(camera_id: int, level: int = 1, start_time: str = None) -> None:
-    """Ghi lại sự kiện tắc nghẽn"""
+def log_congestion(camera_id: int, level: int = 1, start_time: str = None) -> int:
+    """Ghi lại sự kiện tắc nghẽn và trả về ID của record"""
     from datetime import datetime
     if start_time is None:
         start_time = datetime.now().isoformat()
     
     with connect() as connection:
-        connection.execute(
+        cursor = connection.execute(
             """
             INSERT INTO nhat_ky_un_tac (id_camera, muc_do_un_tac, thoi_gian_bat_dau)
             VALUES (?, ?, ?)
@@ -277,6 +277,36 @@ def log_congestion(camera_id: int, level: int = 1, start_time: str = None) -> No
             (camera_id, level, start_time)
         )
         connection.commit()
+        return cursor.lastrowid
+
+
+def update_congestion_end_time(congestion_id: int, end_time: str = None) -> None:
+    """Cập nhật thời gian kết thúc cho sự kiện tắc nghẽn"""
+    from datetime import datetime
+    if end_time is None:
+        end_time = datetime.now().isoformat()
+    
+    # Tính toán thời gian kéo dài (duration_seconds)
+    with connect() as connection:
+        row = connection.execute(
+            "SELECT thoi_gian_bat_dau FROM nhat_ky_un_tac WHERE id = ?",
+            (congestion_id,)
+        ).fetchone()
+        
+        if row:
+            start_dt = datetime.fromisoformat(row["thoi_gian_bat_dau"])
+            end_dt = datetime.fromisoformat(end_time)
+            duration_seconds = int((end_dt - start_dt).total_seconds())
+            
+            connection.execute(
+                """
+                UPDATE nhat_ky_un_tac 
+                SET thoi_gian_ket_thuc = ?, thoi_gian_keo_dai_giay = ?
+                WHERE id = ?
+                """,
+                (end_time, duration_seconds, congestion_id)
+            )
+            connection.commit()
 
 
 def log_passed_vehicle(camera_id: int, bien_so_xe: str, loai_xe: str, thoi_gian_di_qua: str = None) -> None:
@@ -464,3 +494,75 @@ def fix_image_paths() -> int:
         
         connection.commit()
     return count
+
+
+def migrate_camera_ids_and_plates() -> dict:
+    """
+    Migration function để:
+    1. Cập nhật tất cả N/A hoặc NULL id_camera về 0
+    2. Cập nhật đường dẫn biển số theo cấu trúc mới logs/plates/YYYY/MM/DD/
+    """
+    from datetime import datetime
+    import re
+    
+    results = {
+        "parking_violations_updated": 0,
+        "congestion_records_updated": 0,
+        "license_plates_updated": 0
+    }
+    
+    with connect() as connection:
+        # 1. Cập nhật id_camera từ N/A/NULL về 0 trong bảng vi_pham_do_xe
+        cursor = connection.execute(
+            "UPDATE vi_pham_do_xe SET id_camera = 0 WHERE id_camera IS NULL OR id_camera = 'N/A' OR CAST(id_camera AS TEXT) = 'N/A'"
+        )
+        connection.commit()
+        results["parking_violations_updated"] = cursor.rowcount
+        
+        # 2. Cập nhật id_camera từ N/A/NULL về 0 trong bảng nhat_ky_un_tac
+        cursor = connection.execute(
+            "UPDATE nhat_ky_un_tac SET id_camera = 0 WHERE id_camera IS NULL OR id_camera = 'N/A' OR CAST(id_camera AS TEXT) = 'N/A'"
+        )
+        connection.commit()
+        results["congestion_records_updated"] = cursor.rowcount
+        
+        # 3. Cập nhật đường dẫn biển số theo cấu trúc mới logs/plates/YYYY/MM/DD/
+        rows = connection.execute(
+            "SELECT id, bien_so, ngay_phat_hien, duong_dan_anh FROM bien_so_phat_hien WHERE duong_dan_anh IS NOT NULL"
+        ).fetchall()
+        
+        for row in rows:
+            plate_id = row["id"]
+            plate_text = row["bien_so"]
+            detected_date = row["ngay_phat_hien"]  # Format: YYYY-MM-DD
+            old_path = row["duong_dan_anh"]
+            
+            # Skip nếu đã đúng format (chứa /YYYY/MM/DD/)
+            if re.search(r'/\d{4}/\d{2}/\d{2}/', old_path):
+                continue
+            
+            # Trích xuất năm, tháng, ngày từ detected_date
+            try:
+                date_obj = datetime.strptime(detected_date, "%Y-%m-%d")
+                year = date_obj.strftime("%Y")
+                month = date_obj.strftime("%m")
+                day = date_obj.strftime("%d")
+                
+                # Trích xuất tên file từ đường dẫn cũ (phần sau dấu / cuối cùng)
+                filename = old_path.split('/')[-1] if '/' in old_path else old_path
+                
+                # Tạo đường dẫn mới
+                new_path = f"logs/plates/{year}/{month}/{day}/{filename}"
+                
+                # Cập nhật DB
+                connection.execute(
+                    "UPDATE bien_so_phat_hien SET duong_dan_anh = ? WHERE id = ?",
+                    (new_path, plate_id)
+                )
+                results["license_plates_updated"] += 1
+            except Exception as e:
+                print(f"[Migration] Lỗi khi xử lý plate ID {plate_id}: {e}")
+        
+        connection.commit()
+    
+    return results
