@@ -25,10 +25,23 @@ class TrafficMonitor:
         self.vehicle_count = 0
         self.people_count = 0
         self.current_ids_in_roi = []
-        self.current_bboxes = [] # Reset list
+        self.current_bboxes = [] # Reset list - LƯU TRỪ BOX CỦA CẢ XE VÀ NGƯỜI
 
-    def log_person(self):
+    def log_person(self, bbox=None):
+        """Log người → thêm bounding box vào list (cho tính occupancy)
+        
+        Args:
+            bbox: tuple (x1, y1, x2, y2) của bounding box person
+        """
         self.people_count += 1
+        if bbox is not None:
+            # Lọc nhiễu: Bỏ qua bounding box lớn dị thường (lỗi YOLO) > 30% diện tích ROI
+            if self.roi_area > 0:
+                area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+                if area <= (self.roi_area * MAX_VEHICLE_AREA_RATIO):
+                    self.current_bboxes.append(bbox)
+            else:
+                self.current_bboxes.append(bbox)
 
     def log_vehicle(self, track_id, cx, cy, current_time, bbox=None):
         """bbox truyền vào dưới dạng tuple (x1, y1, x2, y2)"""

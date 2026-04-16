@@ -287,6 +287,8 @@ def process_video(
     last_congestion_record_id = None
     unique_passed_count = 0
     violation_events = []
+    clear_start_time = 0  # Để theo dõi thời gian level = 0 liên tục
+    true_clear_seconds = 5.0  # Chỉ coi là hết tắc khi level = 0 liên tục 5 giây
 
     frame_index = 0
     last_results = None
@@ -398,7 +400,9 @@ def process_video(
 
                     # 2. Đếm phương tiện và người
                     if label == "person":
-                        if traffic_monitor is not None: traffic_monitor.log_person()
+                        if traffic_monitor is not None: 
+                            # Pass bbox của người để tính vào occupancy
+                            traffic_monitor.log_person(bbox=(x1, y1, x2, y2))
                     elif label in VEHICLE_LABELS and traffic_monitor is not None:
                         traffic_monitor.log_vehicle(track_id, center_x, center_y, current_time, (x1, y1, x2, y2))
 
@@ -449,15 +453,41 @@ def process_video(
                 traffic_monitor.draw_status(frame, avg_spd, st_txt, st_clr)
                 latest_status = st_txt
                 
+                # Cập nhật trạng thái traffic với debounce logic
                 traffic_alert_manager.update_traffic_state(lvl, clean_frame)
                 
-                if lvl != last_db_traffic_level:
-                    if last_db_traffic_level > 0 and lvl == 0 and last_congestion_record_id:
+                # ===== LOGIC GHI DATABASE VỚI DEBOUNCE & TRUE_CLEAR =====
+                # Sử dụng confirmed_level từ traffic_alert_manager (đã debounce 1s)
+                confirmed_lvl = traffic_alert_manager.confirmed_level
+                
+                # Tra cứu thời gian level = 0 liên tục để implement true_clear
+                if confirmed_lvl == 0:
+                    if clear_start_time == 0:
+                        # Lần đầu nó = 0 → ghi lại thời điểm bắt đầu
+                        clear_start_time = current_time
+                    elif current_time - clear_start_time >= true_clear_seconds:
+                        # Đã = 0 liên tục ≥5 giây → xác nhận HẾT TẮC dứt điểm
+                        if last_db_traffic_level > 0 and last_congestion_record_id:
+                            # Update end_time cho record tắc trong database
+                            update_congestion_end_time(last_congestion_record_id)
+                            last_congestion_record_id = None
+                        last_db_traffic_level = 0
+                else:
+                    # Level > 0 → reset bộ đếm clear
+                    clear_start_time = 0
+                
+                # Ghi DB chỉ khi:
+                # 1. confirmed_level thay đổi (từ debounce)
+                # 2. Hoặc level > 0 (escalation hoặc level mới)
+                if confirmed_lvl != last_db_traffic_level:
+                    if last_db_traffic_level > 0 and confirmed_lvl == 0 and last_congestion_record_id:
+                        # Từ tắc → không tắc → update end_time
                         update_congestion_end_time(last_congestion_record_id)
                         last_congestion_record_id = None
-                    elif lvl > 0:
-                        last_congestion_record_id = log_congestion(camera_id, lvl)
-                    last_db_traffic_level = lvl
+                    elif confirmed_lvl > 0:
+                        # Bắt đầu tắc hoặc escalation → ghi log mới
+                        last_congestion_record_id = log_congestion(camera_id, confirmed_lvl)
+                    last_db_traffic_level = confirmed_lvl
             
             # Gửi progress
             if progress_callback is not None:
