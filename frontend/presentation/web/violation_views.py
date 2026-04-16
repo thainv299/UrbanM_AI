@@ -36,9 +36,9 @@ async def api_violations(
         "violations": violations,
     }
 
-@violation_router.post("/api/violations/resolve")
+@violation_router.post("/api/violations/{violation_id}/resolve")
 async def api_resolve_violation(
-    violation_id: int = Form(...),
+    violation_id: int,
     user=Depends(login_required)
 ):
     """Đánh dấu vi phạm đã giải quyết"""
