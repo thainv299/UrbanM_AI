@@ -107,6 +107,7 @@ def run_detection_job(
     )
 
     try:
+        from frontend.database.sqlite_db import log_parking_violation
         # Pass stream directly - no output file needed (output_path=None)
         summary = process_video(
             input_stream=video_stream if isinstance(video_stream, BytesIO) else None,
@@ -115,6 +116,7 @@ def run_detection_job(
             output_path=None,  # NO OUTPUT FILE
             settings=detection_settings,
             progress_callback=handle_progress,
+            violation_callback=log_parking_violation,
         )
         if summary:
             try:
@@ -129,11 +131,6 @@ def run_detection_job(
                         conn.execute(
                             "INSERT INTO lich_su_phuong_tien (id_camera, bien_so_xe, loai_xe, thoi_gian_di_qua) VALUES (?, ?, ?, ?)",
                             (camera_id, b_so, v.get("label", "unknown"), v.get("timestamp"))
-                        )
-                    for v_id in violation_ids:
-                        conn.execute(
-                            "INSERT INTO vi_pham_do_xe (id_camera, bien_so, thoi_gian_vi_pham, thoi_gian_do_giay, duong_dan_anh) VALUES (?, ?, ?, ?, ?)",
-                            (camera_id, f"VP-{v_id}", time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime()), 0, "")
                         )
                     conn.commit()
             except Exception as e:
