@@ -28,6 +28,7 @@ class ParkingManager:
         self.violation_callback = None
         self.telegram_enabled = True
         self.save_violation_frames = True
+        self.io_worker = None  # AsyncIOWorker (inject từ bên ngoài)
         self.telegram_bot_token = ""
         self.telegram_chat_id = ""
 
@@ -137,6 +138,14 @@ class ParkingManager:
                 del self.active_recordings[tid]
 
     def _send_warning_thread(self, img_t0, caption):
+        # Nếu có io_worker, dùng async mode (đẩy vào queue)
+        if self.io_worker is not None:
+            self.io_worker.enqueue_telegram_image_from_frame(
+                img_t0, caption, self.telegram_bot_token, self.telegram_chat_id
+            )
+            return
+
+        # Fallback: gọi đồng bộ (legacy, cho desktop GUI)
         temp_dir = os.path.join("logs", "violations", "_temp")
         os.makedirs(temp_dir, exist_ok=True)
         img_path = os.path.join(temp_dir, f"temp_warning_{now_ts()}.jpg")
@@ -177,11 +186,18 @@ class ParkingManager:
         target_w = max(w1, w2)
         img1 = cv2.resize(data['img_t0'], (target_w, int(h1 * target_w / w1)))
         img2 = cv2.resize(data['img_t1'], (target_w, int(h2 * target_w / w2)))
-        cv2.putText(img1, "T0: Bat dau do", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        cv2.putText(img2, "T1: Vi pham", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        
+        # Tham số vẽ linh hoạt dựa trên resolution
+        comb_h, comb_w = (img1.shape[0] + img2.shape[0]), target_w
+        f_scale = max(0.6, 1.0 * (comb_h / 1440)) # 1440 là chiều cao 2 ảnh FHD
+        f_thick = max(1, int(round(2 * (comb_h / 1440))))
+        
+        cv2.putText(img1, "T0: Bat dau do", (int(20*(target_w/1280)), int(40*(h1/720))), cv2.FONT_HERSHEY_SIMPLEX, f_scale, (0, 0, 255), f_thick)
+        cv2.putText(img2, "T1: Vi pham", (int(20*(target_w/1280)), int(40*(h2/720))), cv2.FONT_HERSHEY_SIMPLEX, f_scale, (0, 0, 255), f_thick)
         combined = np.vstack((img1, img2))
-        cv2.putText(combined, f"PLATE: {plate_folder}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
+        cv2.putText(combined, f"PLATE: {plate_folder}", (int(20*(target_w/1280)), int(80*(comb_h/1440))), cv2.FONT_HERSHEY_SIMPLEX, f_scale * 1.2, (0, 255, 0), f_thick + 1)
         cv2.imwrite(combined_path, combined)
+
         
         # Lưu video bằng chứng
         if data['frames']:
@@ -222,14 +238,29 @@ class ParkingManager:
             
         if self.telegram_enabled:
             caption_img = f"🚨 VI PHẠM CHỐT: Xe {plate_folder} đỗ sai quy định."
-            send_telegram_image(combined_path, caption_img, self.telegram_bot_token, self.telegram_chat_id)
             caption_vid = f"Bằng chứng Video 15s cho xe {plate_folder}"
-            send_telegram_video(video_path, caption_vid, self.telegram_bot_token, self.telegram_chat_id)
+            if self.io_worker is not None:
+                # Async mode: đẩy vào queue
+                self.io_worker.enqueue_telegram_image(
+                    combined_path, caption_img, self.telegram_bot_token, self.telegram_chat_id
+                )
+                self.io_worker.enqueue_telegram_video(
+                    video_path, caption_vid, self.telegram_bot_token, self.telegram_chat_id
+                )
+            else:
+                # Fallback: gọi đồng bộ
+                send_telegram_image(combined_path, caption_img, self.telegram_bot_token, self.telegram_chat_id)
+                send_telegram_video(video_path, caption_vid, self.telegram_bot_token, self.telegram_chat_id)
 
-    def process_vehicle(self, frame, clean_frame, track_id, label, cx, cy, frame_count, bbox=None, license_plate=None):
+    def process_vehicle(self, frame, clean_frame, track_id, label, cx, cy, frame_count, bbox=None, license_plate=None, drawing_params=None):
         """Kiểm tra và cập nhật trạng thái đỗ xe, trả về display_label và box_color mới (nếu có)"""
         if self.logic is None:
             return None, None
+            
+        # Lấy tham số vẽ linh hoạt (nếu có)
+        f_scale, f_thick, f_offset = (0.7, 2, 10)
+        if drawing_params:
+            f_scale, f_thick, f_offset = drawing_params
             
         # Bỏ qua xe máy, xe đạp và người đi bộ (không xét lỗi đỗ trái phép)
         if label in ["motorcycle", "bicycle", "person"]:
@@ -295,8 +326,8 @@ class ParkingManager:
                     img_t0 = clean_frame.copy()
                     if bbox is not None:
                         x1, y1, x2, y2 = bbox
-                        cv2.rectangle(img_t0, (x1, y1), (x2, y2), box_color, 3)
-                        cv2.putText(img_t0, f"{label.upper()} {track_id} - BAT DAU DO", (x1, max(0, y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, box_color, 2)
+                        cv2.rectangle(img_t0, (x1, y1), (x2, y2), box_color, f_thick + 1)
+                        cv2.putText(img_t0, f"{label.upper()} {track_id} - BAT DAU DO", (x1, max(f_offset, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, f_scale, box_color, f_thick)
                         
                     self.waiting_vehicles[track_id] = {'img_t0': img_t0, 'start_time': datetime.datetime.now()}
                     if self.telegram_enabled:
@@ -314,8 +345,8 @@ class ParkingManager:
                     img_t1 = clean_frame.copy()
                     if bbox is not None:
                         x1, y1, x2, y2 = bbox
-                        cv2.rectangle(img_t1, (x1, y1), (x2, y2), box_color, 4)
-                        cv2.putText(img_t1, f"{label.upper()} {track_id} - VI PHAM!", (x1, max(0, y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.8, box_color, 3)
+                        cv2.rectangle(img_t1, (x1, y1), (x2, y2), box_color, f_thick + 2)
+                        cv2.putText(img_t1, f"{label.upper()} {track_id} - VI PHAM!", (x1, max(f_offset, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, f_scale + 0.1, box_color, f_thick + 1)
                         
                     self.active_recordings[track_id] = {
                         'frames': list(self.frame_buffer),
@@ -329,8 +360,9 @@ class ParkingManager:
                     }
                     
                     h, w = frame.shape[:2]
-                    cv2.rectangle(frame, (0, 0), (w, 80), (0, 0, 0), -1)
-                    cv2.putText(frame, "VI PHAM: DO XE SAI QUY DINH!", (20, 55), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 0, 255), 3)
+                    banner_h = int(80 * (h / 720))
+                    cv2.rectangle(frame, (0, 0), (w, banner_h), (0, 0, 0), -1)
+                    cv2.putText(frame, "VI PHAM: DO XE SAI QUY DINH!", (int(20 * (w/1280)), int(55 * (h/720))), cv2.FONT_HERSHEY_SIMPLEX, 1.1 * (w/1280), (0, 0, 255), f_thick + 1)
                     
             elif state == RECORDING_DONE:
                 box_color = (0, 0, 255)
@@ -343,10 +375,10 @@ class ParkingManager:
             return display_label, box_color
         return None, None
 
-    def draw_polygon_overlay(self, frame):
+    def draw_polygon_overlay(self, frame, f_thick=2):
         """Vẽ vùng cấm đỗ màu đỏ lên frame"""
         if self.no_park_polygon is not None:
             overlay = frame.copy()
             cv2.fillPoly(overlay, [self.no_park_polygon], (0, 0, 180))
             cv2.addWeighted(overlay, 0.15, frame, 0.85, 0, frame)
-            cv2.polylines(frame, [self.no_park_polygon], True, (0, 0, 255), 2)
+            cv2.polylines(frame, [self.no_park_polygon], True, (0, 0, 255), f_thick)
