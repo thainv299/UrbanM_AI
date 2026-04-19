@@ -13,6 +13,9 @@ class ALPRLogger:
         self.db_callback = db_callback
         self.id_camera = id_camera
         
+        # AsyncIOWorker (inject từ bên ngoài, nếu None sẽ fallback gọi đồng bộ)
+        self.io_worker = None
+        
         os.makedirs(self.plates_dir, exist_ok=True)
         
         if not os.path.exists(self.csv_path):
@@ -53,31 +56,51 @@ class ALPRLogger:
         # Make a copy of full_frame to draw on
         evidence_frame = full_frame.copy()
         
+        # Drawing parameters based on resolution
+        h, w = full_frame.shape[:2]
+        f_thick = max(1, int(round(2 * (w / 1280))))
+        
         # Draw bounding box on the evidence copy
         x1, y1, x2, y2 = plate_coords
-        cv2.rectangle(evidence_frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+        cv2.rectangle(evidence_frame, (x1, y1), (x2, y2), (0, 0, 255), f_thick)
         
-        # Save image
-        cv2.imwrite(img_path, evidence_frame)
+        # Web path (forward slashes)
+        web_path = img_path.replace(os.sep, "/")
+        time_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        csv_row = [time_str, current_frame, plate_text, web_path]
         
-        # Append object to csv log
-        with open(self.csv_path, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            # Convert to web path (forward slashes)
-            web_path = img_path.replace(os.sep, "/")
-            writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), current_frame, plate_text, web_path])
-            
-        # Gọi callback để lưu vào Database nếu có
-        if self.db_callback:
-            # logs/plates/YYYY/MM/DD/filename.jpg (Đường dẫn chuẩn cho web)
-            web_path = img_path.replace(os.sep, "/")
-            try:
-                self.db_callback(
-                    license_plate=plate_text,
-                    detection_count=1,
-                    avg_confidence=0.0, # Tạm để 0.0 hoặc lấy từ OCRManager nếu cần
-                    image_paths=web_path,
-                    camera_id=self.id_camera
+        if self.io_worker is not None:
+            # ── Async mode: đẩy vào queue, return ngay ──
+            self.io_worker.enqueue_save_image(img_path, evidence_frame)
+            self.io_worker.enqueue_csv_append(self.csv_path, csv_row)
+            if self.db_callback:
+                self.io_worker.enqueue_db_write(
+                    self.db_callback,
+                    kwargs={
+                        "license_plate": plate_text,
+                        "detection_count": 1,
+                        "avg_confidence": 0.0,
+                        "image_paths": web_path,
+                        "camera_id": self.id_camera,
+                    }
                 )
-            except Exception as e:
-                print(f"[ALPR Database] Lỗi khi ghi vào database: {e}")
+        else:
+            # ── Fallback: gọi đồng bộ (legacy, cho desktop GUI) ──
+            cv2.imwrite(img_path, evidence_frame)
+
+            with open(self.csv_path, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(csv_row)
+                
+            if self.db_callback:
+                try:
+                    self.db_callback(
+                        license_plate=plate_text,
+                        detection_count=1,
+                        avg_confidence=0.0,
+                        image_paths=web_path,
+                        camera_id=self.id_camera
+                    )
+                except Exception as e:
+                    print(f"[ALPR Database] Lỗi khi ghi vào database: {e}")
+

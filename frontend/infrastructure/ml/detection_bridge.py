@@ -23,6 +23,7 @@ from modules.ocr.ocr_manager import OCRManager
 from modules.utils.alpr_logger import ALPRLogger
 from modules.utils.traffic_alert_manager import TrafficAlertManager
 from modules.utils.interactive_telegram_bot import start_bot_thread
+from modules.utils.async_io_worker import AsyncIOWorker
 from database.sqlite_db import (
     log_passed_vehicle,
     log_congestion,
@@ -155,6 +156,22 @@ def _encode_preview_frame(frame: np.ndarray, max_width: int = 960) -> Optional[b
     return encoded.tobytes()
 
 
+def _get_drawing_params(width: int) -> Tuple[float, int, int]:
+    """
+    Tính toán các tham số vẽ (fontScale, thickness, offset) dựa trên chiều rộng frame.
+    Lấy chuẩn là 1280px (HD).
+    """
+    base_width = 1280
+    ratio = width / base_width
+    
+    font_scale = max(0.45, 0.55 * ratio)
+    thickness = max(1, int(round(2 * ratio)))
+    # Khoảng cách từ text đến box
+    offset = max(10, int(round(15 * ratio)))
+    
+    return font_scale, thickness, offset
+
+
 def _load_model(model_path: Path) -> YOLO:
     """Tải model YOLO, hỗ trợ TensorRT .engine."""
     model_str = str(model_path)
@@ -229,6 +246,9 @@ def process_video(
     # Reset capture
     capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
+    # Tính toán tham số vẽ động dựa trên resolution thật của video
+    f_scale, f_thick, f_offset = _get_drawing_params(frame_width)
+
     # Vùng ROI
     roi_points = _normalize_points(
         settings.get("roi_points"), frame_width, frame_height, settings.get("roi_meta")
@@ -258,10 +278,19 @@ def process_video(
     model = _load_model(model_path)
     traffic_monitor = TrafficMonitor(roi_polygon=roi_polygon) if enable_congestion else None
     
-    # Khởi tạo các Manager
+    # ── AsyncIOWorker: Xử lý I/O nền (Telegram, ghi file, ghi DB) ──
+    io_worker = AsyncIOWorker(num_threads=2, max_queue_size=200)
+    io_worker.telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    io_worker.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    io_worker.start()
+
+    # Khởi tạo các Manager (inject io_worker)
     camera_id = int(settings.get("camera_id", 0))
     alpr_logger = ALPRLogger(db_callback=log_detected_license_plate, id_camera=camera_id)
+    alpr_logger.io_worker = io_worker
+    
     traffic_alert_manager = TrafficAlertManager()
+    traffic_alert_manager.io_worker = io_worker
     
     parking_manager = ParkingManager(None, None) 
     parking_manager.no_park_polygon = _to_polygon(no_parking_points)
@@ -269,6 +298,7 @@ def process_video(
     parking_manager.move_thr_px = move_threshold_px
     parking_manager.camera_id = camera_id  # Thêm để truyền ID Camera
     parking_manager.violation_callback = log_parking_violation  # Ủy quyền cho Manager lưu DB sau 10s
+    parking_manager.io_worker = io_worker
     parking_manager.setup_detection(fps)
     
     # Telegram Bot
@@ -309,10 +339,12 @@ def process_video(
             if pause_event and pause_event.is_set():
                 if progress_callback is not None:
                     p_frame = frame.copy() if 'frame' in locals() else np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
-                    cv2.rectangle(p_frame, (frame_width//2 - 150, frame_height//2 - 50), 
-                                 (frame_width//2 + 150, frame_height//2 + 50), (0, 0, 0), -1)
-                    cv2.putText(p_frame, "TẠM DỪNG", (frame_width//2 - 100, frame_height//2 + 15), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+                    # Vẽ hộp chữ nhật TẠM DỪNG to hơn trên 4K
+                    rect_w, rect_h = int(300 * (frame_width/1280)), int(100 * (frame_height/720))
+                    cv2.rectangle(p_frame, (frame_width//2 - rect_w//2, frame_height//2 - rect_h//2), 
+                                 (frame_width//2 + rect_w//2, frame_height//2 + rect_h//2), (0, 0, 0), -1)
+                    cv2.putText(p_frame, "TẠM DỪNG", (frame_width//2 - int(100 * (frame_width/1280)), frame_height//2 + int(15 * (frame_height/720))), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 1.2 * (frame_width/1280), (0, 255, 255), f_thick + 1)
                     progress_callback({
                         "phase": "running_detection",
                         "processed_frames": frame_index,
@@ -392,7 +424,8 @@ def process_video(
                         if enable_license_plate and track_id != -1:
                             processed_id = ocr_manager.process_plate(
                                 frame, clean_frame, track_id, x1, y1, x2, y2, center_x, center_y, 
-                                valid_vehicles, current_time, frame_index
+                                valid_vehicles, current_time, frame_index,
+                                drawing_params=(f_scale, f_thick, f_offset)
                             )
                             if processed_id:
                                 current_plate_ids.add(processed_id)
@@ -422,7 +455,8 @@ def process_video(
                                         break
                         
                         display_label_p, box_color_p = parking_manager.process_vehicle(
-                            frame, clean_frame, track_id, label, center_x, center_y, frame_index, bbox=(x1, y1, x2, y2), license_plate=license_plate
+                            frame, clean_frame, track_id, label, center_x, center_y, frame_index, bbox=(x1, y1, x2, y2), license_plate=license_plate,
+                            drawing_params=(f_scale, f_thick, f_offset)
                         )
                         
                         if display_label_p:
@@ -439,18 +473,18 @@ def process_video(
 
                     # 4. Lưu phương tiện đi qua
                     if track_id != -1 and track_id not in logged_vehicle_ids:
-                        log_passed_vehicle(camera_id, f"ID_{track_id}", label)
+                        io_worker.enqueue_db_write(log_passed_vehicle, args=(camera_id, f"ID_{track_id}", label))
                         logged_vehicle_ids.add(track_id)
                         unique_passed_count += 1
 
                     # Vẽ frame
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
-                    cv2.putText(frame, display_label, (x1, max(20, y1-10)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, box_color, 2)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, f_thick)
+                    cv2.putText(frame, display_label, (x1, max(f_offset, y1-5)), cv2.FONT_HERSHEY_SIMPLEX, f_scale, box_color, f_thick)
 
             # Cập nhật Traffic Monitor
             if traffic_monitor is not None:
                 avg_spd, st_txt, st_clr, lvl = traffic_monitor.calculate_speed_and_status(current_time, frame.shape)
-                traffic_monitor.draw_status(frame, avg_spd, st_txt, st_clr)
+                traffic_monitor.draw_status(frame, avg_spd, st_txt, st_clr, f_scale, f_thick)
                 latest_status = st_txt
                 
                 # Cập nhật trạng thái traffic với debounce logic
@@ -469,7 +503,7 @@ def process_video(
                         # Đã = 0 liên tục ≥5 giây → xác nhận HẾT TẮC dứt điểm
                         if last_db_traffic_level > 0 and last_congestion_record_id:
                             # Update end_time cho record tắc trong database
-                            update_congestion_end_time(last_congestion_record_id)
+                            io_worker.enqueue_db_write(update_congestion_end_time, args=(last_congestion_record_id,))
                             last_congestion_record_id = None
                         last_db_traffic_level = 0
                 else:
@@ -482,10 +516,10 @@ def process_video(
                 if confirmed_lvl != last_db_traffic_level:
                     if last_db_traffic_level > 0 and confirmed_lvl == 0 and last_congestion_record_id:
                         # Từ tắc → không tắc → update end_time
-                        update_congestion_end_time(last_congestion_record_id)
+                        io_worker.enqueue_db_write(update_congestion_end_time, args=(last_congestion_record_id,))
                         last_congestion_record_id = None
                     elif confirmed_lvl > 0:
-                        # Bắt đầu tắc hoặc escalation → ghi log mới
+                        # Bắt đầu tắc hoặc escalation → ghi log mới (vẫn đồng bộ vì cần record_id)
                         last_congestion_record_id = log_congestion(camera_id, confirmed_lvl)
                     last_db_traffic_level = confirmed_lvl
             
@@ -511,6 +545,8 @@ def process_video(
         if enable_license_plate: ocr_manager.stop_worker()
         if last_congestion_record_id: update_congestion_end_time(last_congestion_record_id)
         log_vehicle_count(camera_id, unique_passed_count)
+        # Chờ io_worker xử lý hết các task còn lại trước khi kết thúc job
+        io_worker.shutdown(wait=True, timeout=60.0)
         if should_cleanup_temp and input_video_path.exists():
             try: os.unlink(input_video_path)
             except: pass

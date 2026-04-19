@@ -72,8 +72,19 @@ class OCRManager:
             if frame_count - self.spatial_memory[sid][3] > 300: # Xóa vết cũ sau khoảng 10s
                 del self.spatial_memory[sid]
 
-    def draw_grace_period_boxes(self, frame, current_plate_ids):
+    def draw_grace_period_boxes(self, frame, current_plate_ids, drawing_params=None):
         """Vẽ bù các box biển số khi mất khung hình (Grace Period)"""
+        # Lấy tham số vẽ linh hoạt
+        f_scale, f_thick, f_offset = (0.7, 2, 10)
+        if drawing_params:
+            f_scale, f_thick, f_offset = drawing_params
+        else:
+            # Tự tính nếu không truyền vào
+            h, w = frame.shape[:2]
+            f_scale = max(0.45, 0.55 * (w / 1280))
+            f_thick = max(1, int(round(2 * (w / 1280))))
+            f_offset = max(10, int(round(15 * (w / 1280))))
+
         for tid in list(self.active_tracks.keys()):
             if tid not in current_plate_ids:
                 self.active_tracks[tid]['missed_frames'] += 1
@@ -86,11 +97,21 @@ class OCRManager:
                     else:
                         display_text = (self.plate_history.get(tid) or ["..."])[-1]
                         color = (0, 165, 255)
-                    cv2.rectangle(frame, (old_x1, old_y1), (old_x2, old_y2), color, 2)
-                    cv2.putText(frame, display_text, (old_x1, old_y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                    cv2.rectangle(frame, (old_x1, old_y1), (old_x2, old_y2), color, f_thick)
+                    cv2.putText(frame, display_text, (old_x1, old_y1 - f_offset), cv2.FONT_HERSHEY_SIMPLEX, f_scale, color, f_thick)
 
-    def process_plate(self, frame, clean_frame, track_id, x1, y1, x2, y2, cx, cy, valid_vehicles, current_time, frame_count):
+    def process_plate(self, frame, clean_frame, track_id, x1, y1, x2, y2, cx, cy, valid_vehicles, current_time, frame_count, drawing_params=None):
         """Xử lý lôgic chính: check spatial memory, nhận kết quả queue, gửi queue, vẽ biển số lên frame."""
+        # Lấy tham số vẽ linh hoạt
+        f_scale, f_thick, f_offset = (0.7, 2, 10)
+        if drawing_params:
+            f_scale, f_thick, f_offset = drawing_params
+        else:
+            h, w = frame.shape[:2]
+            f_scale = max(0.45, 0.55 * (w / 1280))
+            f_thick = max(1, int(round(2 * (w / 1280))))
+            f_offset = max(10, int(round(15 * (w / 1280))))
+
         # Lọc biển số: Chỉ xử lý OCR nếu tâm biển số nằm trong ô tô/bus/truck
         is_valid_plate = False
         matched_v_id = -1
@@ -175,9 +196,9 @@ class OCRManager:
                 pass
 
         # Vẽ Box Biển Số
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), f_thick)
         color = (0, 255, 0) if "[OK]" in display_text else ((0, 0, 255) if "[SKIP]" in display_text else (0, 255, 255))
-        cv2.putText(frame, display_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        cv2.putText(frame, display_text, (x1, y1 - f_offset), cv2.FONT_HERSHEY_SIMPLEX, f_scale, color, f_thick)
         
         return track_id
 

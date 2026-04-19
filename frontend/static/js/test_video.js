@@ -299,6 +299,54 @@ function initTestVideoForm() {
         stopPolling();
     });
 
+    // ── FULLSCREEN VIDEO VIEWER ──────────────────────────────
+    const fsContainer = document.getElementById("stream-fullscreen-container");
+    const fsEnterBtn = document.getElementById("fullscreen-btn");
+    const fsExitBtn = document.getElementById("fullscreen-exit-btn");
+
+    function enterFullscreen() {
+        if (!fsContainer) return;
+        if (fsContainer.requestFullscreen) {
+            fsContainer.requestFullscreen();
+        } else if (fsContainer.webkitRequestFullscreen) {
+            fsContainer.webkitRequestFullscreen(); // Safari
+        } else if (fsContainer.msRequestFullscreen) {
+            fsContainer.msRequestFullscreen(); // IE/Edge cũ
+        }
+    }
+
+    function exitFullscreen() {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+    }
+
+    // Nút "Toàn màn hình"
+    if (fsEnterBtn) {
+        fsEnterBtn.addEventListener("click", enterFullscreen);
+    }
+
+    // Nút "Thoát (ESC)" bên trong fullscreen
+    if (fsExitBtn) {
+        fsExitBtn.addEventListener("click", exitFullscreen);
+    }
+
+    // Đồng bộ trạng thái khi người dùng bấm ESC (trình duyệt tự exit fullscreen)
+    document.addEventListener("fullscreenchange", () => {
+        const isFs = !!document.fullscreenElement;
+        if (fsEnterBtn) {
+            fsEnterBtn.querySelector("span, svg + *")
+            // Cập nhật text nút nếu cần (tuỳ chọn)
+        }
+    });
+    document.addEventListener("webkitfullscreenchange", () => {
+        // Hỗ trợ Safari
+    });
+
     // Show "Draw ROI" buttons only after video is selected
     const videoFileInput = form?.querySelector('input[name="video_file"]');
     let firstFrameDataUrl = null;

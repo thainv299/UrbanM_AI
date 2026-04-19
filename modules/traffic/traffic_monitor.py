@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 
 # --- NGƯỠNG CẢNH BÁO GIAO THÔNG (CONGESTION THRESHOLDS) ---
-CONG_COUNT_THR = 10              # Cấp 1: Số xe tối thiểu để được coi là "Đông đúc L1"
+CONG_COUNT_THR = 20              # Cấp 1: Số xe tối thiểu để được coi là "Đông đúc L1"
 CONG_PEOPLE_THR = 30             # Cấp 1: Số người tối thiểu để được coi là "Đông đúc L1"
 CONG_AREA_PERCENT_THR = 40.0     # Cấp 2: % Diện tích vùng giám sát tối thiểu bị lấp đầy để coi là "Rất đông L2"
 CONG_SPEED_THR = 10.0            # Cấp 3: Vận tốc di chuyển tối đa (px/s) để bị coi là "Tắc nghẽn L3"
@@ -135,8 +135,12 @@ class TrafficMonitor:
             
         return avg_speed, status_text, status_color, traffic_level
 
-    def draw_status(self, frame, avg_speed, status_text, status_color):
-        cv2.putText(frame, f"Vehicles: {self.vehicle_count} | People: {self.people_count}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-        cv2.putText(frame, f"Occupancy: {self.last_occupancy:.1f}%", (30, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-        cv2.putText(frame, f"Avg Speed: {int(avg_speed)} px/s", (30, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-        cv2.putText(frame, status_text, (30, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.9, status_color, 2)
+    def draw_status(self, frame, avg_speed, status_text, status_color, f_scale=0.7, f_thick=2):
+        # Tính toán offset dọc dựa trên font_scale để các dòng không bị đè lên nhau trên 4K
+        line_height = int(40 * (f_scale / 0.7))
+        start_y = int(40 * (f_scale / 0.7))
+        
+        cv2.putText(frame, f"Vehicles: {self.vehicle_count} | People: {self.people_count}", (30, start_y), cv2.FONT_HERSHEY_SIMPLEX, f_scale, (255, 255, 0), f_thick)
+        cv2.putText(frame, f"Occupancy: {self.last_occupancy:.1f}%", (30, start_y + line_height), cv2.FONT_HERSHEY_SIMPLEX, f_scale, (255, 255, 0), f_thick)
+        cv2.putText(frame, f"Avg Speed: {int(avg_speed)} px/s", (30, start_y + 2*line_height), cv2.FONT_HERSHEY_SIMPLEX, f_scale, (255, 255, 0), f_thick)
+        cv2.putText(frame, status_text, (30, start_y + 3*line_height + 10), cv2.FONT_HERSHEY_SIMPLEX, f_scale * 1.2, status_color, f_thick + 1)

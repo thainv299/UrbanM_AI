@@ -6,7 +6,7 @@ from modules.utils.interactive_telegram_bot import send_alert_with_button
 class TrafficAlertManager:
     def __init__(self):
         # Cấu hình thời gian đếm ngược tĩnh (giây)
-        self.DEBOUNCE_SECONDS = 1.0
+        self.DEBOUNCE_SECONDS = 5.0
         self.TRUE_CLEAR_SECONDS = 5.0 # Số giây đường TRỐNG LIÊN TỤC để được coi là hết kẹt xe hoàn toàn
         self.INTERVAL_UNACK = {1: 300, 2: 60, 3: 30}
         self.SNOOZE_ACK = {1: 900, 2: 600, 3: 300}
@@ -19,6 +19,9 @@ class TrafficAlertManager:
         self.snooze_until = 0
         self.is_acknowledged = False
         self.clear_start_time = 0
+        
+        # AsyncIOWorker (inject từ bên ngoài, nếu None sẽ fallback gọi đồng bộ)
+        self.io_worker = None
         
         # Đảm bảo thư mục lưu log tồn tại
         os.makedirs("logs", exist_ok=True)
@@ -81,6 +84,12 @@ class TrafficAlertManager:
             print(f"[INFO] Telegram ACK Mức {acked_level}, nhưng {snooze_duration}s đã hết hạn. Không kích hoạt Snooze.")
 
     def _trigger_alert(self, level, frame):
+        # Nếu có io_worker, đẩy vào queue (không blocking)
+        if self.io_worker is not None:
+            self.io_worker.enqueue_traffic_alert(level, frame)
+            return
+
+        # Fallback: gọi đồng bộ (legacy, cho desktop GUI)
         img_path = "logs/traffic_alert.jpg"
         cv2.imwrite(img_path, frame)
         
@@ -93,3 +102,4 @@ class TrafficAlertManager:
             caption = "BÁO ĐỘNG 🚨: TẮC NGHẼN nghiêm trọng (Mức 3)!"  
         # Gửi sang Bot Telegram có đính kèm Nút nhấn tương tác
         send_alert_with_button(img_path, caption, level)
+
