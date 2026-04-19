@@ -164,9 +164,33 @@
     </div>
 
     <article class="panel" style="padding: 20px; margin-bottom: 24px;">
-        <p class="eyebrow" style="margin-bottom: 12px;">Live Stream (MJPEG)</p>
-        <img id="stream-output" class="preview-frame" alt="AI Analysis Stream"
-            style="width: 100%; max-height: 540px; object-fit: contain; background: #000; border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <p class="eyebrow" style="margin-bottom: 0;">Live Stream (MJPEG)</p>
+            <button type="button" id="fullscreen-btn" class="button secondary xs" title="Xem toàn màn hình"
+                style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 0.8rem;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M8 3H5a2 2 0 0 0-2 2v3"></path>
+                    <path d="M21 8V5a2 2 0 0 0-2-2h-3"></path>
+                    <path d="M3 16v3a2 2 0 0 0 2 2h3"></path>
+                    <path d="M16 21h3a2 2 0 0 0 2-2v-3"></path>
+                </svg>
+                Toàn màn hình
+            </button>
+        </div>
+        <div id="stream-fullscreen-container" class="stream-fullscreen-container">
+            <img id="stream-output" class="preview-frame" alt="AI Analysis Stream"
+                style="width: 100%; max-height: 540px; object-fit: contain; background: #000; border-radius: 8px;">
+            <!-- Nút thoát fullscreen, chỉ hiển thị khi ở chế độ toàn màn hình -->
+            <button type="button" id="fullscreen-exit-btn" class="fullscreen-exit-btn" title="Thoát toàn màn hình (ESC)">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+                <span>Thoát (ESC)</span>
+            </button>
+        </div>
         <p id="stream-output-note" class="muted small" style="margin-top: 10px;">
             Luồng stream sẽ bắt đầu khi backend xử lý video.
         </p>
