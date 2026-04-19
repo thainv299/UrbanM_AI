@@ -141,24 +141,20 @@ function initTestVideoForm() {
     function renderSummary(summary) {
         resultSummary.innerHTML = `
             <article class="summary-card">
-                <span>Frames da xu ly</span>
+                <span>Frames đã xử lý</span>
                 <strong>${summary.processed_frames ?? "-"}</strong>
             </article>
             <article class="summary-card">
-                <span>Thoi luong video</span>
+                <span>Thời lượng video</span>
                 <strong>${summary.duration_seconds ?? "-"}s</strong>
             </article>
             <article class="summary-card">
-                <span>FPS xu ly trung binh</span>
+                <span>FPS</span>
                 <strong>${summary.average_processing_fps ?? "-"}</strong>
             </article>
             <article class="summary-card">
-                <span>Mat do cao nhat</span>
+                <span>Mật độ cao nhất</span>
                 <strong>${summary.max_occupancy_percent ?? "-"}%</strong>
-            </article>
-            <article class="summary-card">
-                <span>Muc giao thong</span>
-                <strong>${summary.highest_traffic_level ?? "-"}</strong>
             </article>
             <article class="summary-card">
                 <span>Vi pham do xe</span>
@@ -192,9 +188,9 @@ function initTestVideoForm() {
         }
 
         if (job.status === "completed") {
-            streamOutputNote.textContent = "Luong stream da hoan tat. Xem tom tat ben duoi.";
+            streamOutputNote.textContent = "Luồng stream đã hoàn tất.";
         } else if (job.status === "failed" || job.status === "aborted") {
-            streamOutputNote.textContent = job.error || "Job da bi huy hoac that bai.";
+            streamOutputNote.textContent = job.error || "Có lỗi xảy ra.";
         }
     }
 
@@ -269,7 +265,6 @@ function initTestVideoForm() {
             }
             prepareViewer(job);
             renderStatus(job, pickTone(job.status));
-            renderPendingSummary("Backend dang xu ly video. Luong stream se cap nhat truc tiep.");
 
             pollingHandle = setInterval(() => pollJob(job.id), 3000);
             pollJob(job.id);

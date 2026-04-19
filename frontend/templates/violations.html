@@ -28,6 +28,29 @@
     </div>
 </section>
 
+<style>
+    .plate-thumbnail {
+        width: 100px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 2px solid var(--border);
+        transition: all 0.3s var(--ease);
+        cursor: pointer;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        display: block;
+        margin: 0 auto;
+    }
+    .plate-thumbnail:hover {
+        transform: scale(1.1) translateY(-2px);
+        border-color: var(--brand-blue);
+        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2);
+    }
+    .data-table td {
+        vertical-align: middle;
+    }
+</style>
+
 <script>
 async function loadViolations() {
     try {
@@ -77,12 +100,15 @@ function displayViolations(violations) {
                         <th>Biển Số</th>
                         <th style="text-align: center;">Thời gian vi phạm</th>
                         <th style="text-align: center;">Thời gian đỗ (giây)</th>
+                        <th style="text-align: center;">Bằng Chứng</th>
                         <th style="text-align: center;">Trạng thái</th>
                         <th style="text-align: center;">Hành động</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${violations.map(v => `
+                    ${violations.map(v => {
+                        const framePath = v.frame_path ? v.frame_path.replace(/^\/+/,'') : '';
+                        return `
                         <tr>
                             <td>
                                 <strong>${v.camera_name || 'N/A'}</strong>
@@ -97,25 +123,27 @@ function displayViolations(violations) {
                                 <span class="pill warning">${v.duration_seconds || 0}s</span>
                             </td>
                             <td style="text-align: center;">
+                                ${framePath ? `
+                                    <a href="/${framePath}" target="_blank" title="Bấm để xem ảnh bằng chứng">
+                                        <img src="/${framePath}" class="plate-thumbnail" alt="Vi phạm ${v.license_plate}" loading="lazy">
+                                    </a>
+                                ` : '<span class="badge muted">N/A</span>'}
+                            </td>
+                            <td style="text-align: center;">
                                 <span class="pill ${v.is_resolved ? 'success' : 'danger'}">
                                     ${v.is_resolved ? 'Đã xử lý' : 'Chưa xử lý'}
                                 </span>
                             </td>
-                            <td style="text-align: center; display: flex; gap: 8px; justify-content: center; align-items: center;">
-                                ${v.frame_path ? `
-                                    <a href="/${v.frame_path.replace(/^\/+/,'')}" target="_blank" class="button secondary xs">
-                                        📷 Ảnh
-                                    </a>
-                                ` : ''}
-                                
+                            <td style="text-align: center;">
                                 ${!v.is_resolved ? `
                                     <button class="button primary xs" onclick="resolveViolation(${v.id})">
                                         ✔ Xác nhận
                                     </button>
-                                ` : ''}
+                                ` : '<span class="text-muted" style="font-size: 12px;">Đã xong</span>'}
                             </td>
                         </tr>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </tbody>
             </table>
         </div>
