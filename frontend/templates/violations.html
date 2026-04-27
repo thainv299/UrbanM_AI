@@ -65,10 +65,7 @@ async function loadViolations() {
 async function resolveViolation(id) {
     if(!confirm("Xác nhận đã xử lý vi phạm này?")) return;
     try {
-        const formData = new FormData();
-        formData.append('violation_id', id);
-        
-        await portalApi.postFormData('/api/violations/resolve', formData);
+        await portalApi.post(`/api/violations/${id}/resolve`);
         portalApi.showToast('Đã đánh dấu xử lý vi phạm thành công', 'success');
         
         // Refresh danh sách

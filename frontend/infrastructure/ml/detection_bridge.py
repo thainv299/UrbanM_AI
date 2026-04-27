@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import threading
+import queue
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -327,6 +328,23 @@ def process_video(
     last_results = None
     started_at = time.time()
     latest_status = ""
+    fps_prev_time = started_at
+    fps_frame_count = 0
+    current_fps = 0.0
+
+    # Khởi tạo luồng nền nén ảnh JPEG (Giúp tăng FPS)
+    preview_queue = queue.Queue(maxsize=1)
+    preview_state = {"last_jpeg": None, "stop": False}
+
+    def preview_encoder_worker():
+        while not preview_state["stop"]:
+            try:
+                frame_to_encode = preview_queue.get(timeout=0.2)
+                preview_state["last_jpeg"] = _encode_preview_frame(frame_to_encode)
+            except queue.Empty:
+                continue
+
+    threading.Thread(target=preview_encoder_worker, daemon=True).start()
 
     # OCR Manager setup
     import logging
@@ -389,7 +407,8 @@ def process_video(
             for result in results:
                 for box in result.boxes:
                     lbl = _canonical_label(model.names[int(box.cls[0])])
-                    if lbl in VEHICLE_LABELS:
+                    # Chỉ nạp ô tô, xe tải, xe bus vào danh sách chạy OCR (bỏ qua xe máy)
+                    if lbl in PARKING_LABELS:
                         vx1, vy1, vx2, vy2 = map(int, box.xyxy[0])
                         v_track_id = int(box.id[0]) if box.id is not None else -1
                         valid_vehicles.append((vx1, vy1, vx2, vy2, v_track_id))
@@ -532,9 +551,22 @@ def process_video(
                         # Bắt đầu tắc hoặc escalation → ghi log mới (vẫn đồng bộ vì cần record_id)
                         last_congestion_record_id = log_congestion(camera_id, confirmed_lvl)
                     last_db_traffic_level = confirmed_lvl
+
+            # Tính và vẽ FPS
+            fps_frame_count += 1
+            fps_now = time.time()
+            if fps_now - fps_prev_time >= 1.0:
+                current_fps = fps_frame_count / (fps_now - fps_prev_time)
+                fps_prev_time = fps_now
+                fps_frame_count = 0
+            cv2.putText(frame, f"FPS: {int(current_fps)}", (30, frame_height - 20), cv2.FONT_HERSHEY_SIMPLEX, f_scale, (0, 255, 255), f_thick)
             
-            # Gửi progress
+            # Nén ảnh JPEG bằng luồng phụ (không đợi)
             if progress_callback is not None:
+                if preview_queue.empty():
+                    # Đưa frame vào queue để luồng phụ nén (dùng copy để an toàn)
+                    preview_queue.put(frame.copy())
+                
                 progress_callback({
                     "phase": "running_detection",
                     "processed_frames": frame_index,
@@ -542,7 +574,7 @@ def process_video(
                     "progress_percent": round((frame_index / total_frames) * 100, 2) if total_frames else None,
                     "elapsed_seconds": round(time.time() - started_at, 1),
                     "latest_status": latest_status,
-                    "preview_jpeg": _encode_preview_frame(frame),
+                    "preview_jpeg": preview_state["last_jpeg"],
                 })
 
             # Control FPS
@@ -551,6 +583,7 @@ def process_video(
                 time.sleep(ideal_frame_time - elapsed)
 
     finally:
+        preview_state["stop"] = True
         capture.release()
         if enable_license_plate: ocr_manager.stop_worker()
         if last_congestion_record_id: update_congestion_end_time(last_congestion_record_id)
