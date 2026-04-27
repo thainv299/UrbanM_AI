@@ -46,6 +46,6 @@ class Container:
 container = Container()
 
 from fastapi.templating import Jinja2Templates
-from core.config import APP_DIR
+from core.config import PROJECT_ROOT
 
-templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
+templates = Jinja2Templates(directory=str(PROJECT_ROOT / "frontend" / "templates"))

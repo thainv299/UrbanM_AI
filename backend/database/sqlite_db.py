@@ -2,7 +2,7 @@ import sqlite3
 
 from werkzeug.security import generate_password_hash
 
-from frontend.core.config import DATABASE_PATH
+from core.config import DATABASE_PATH
 
 
 def connect() -> sqlite3.Connection:
