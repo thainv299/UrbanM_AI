@@ -2,8 +2,8 @@ import numpy as np
 import cv2
 
 # --- NGƯỠNG CẢNH BÁO GIAO THÔNG (CONGESTION THRESHOLDS) ---
-CONG_COUNT_THR = 20              # Cấp 1: Số xe tối thiểu để được coi là "Đông đúc L1"
-CONG_PEOPLE_THR = 30             # Cấp 1: Số người tối thiểu để được coi là "Đông đúc L1"
+CONG_COUNT_THR = 10              # Cấp 1: Số xe tối thiểu để được coi là "Đông đúc L1"
+CONG_PEOPLE_THR = 20             # Cấp 1: Số người tối thiểu để được coi là "Đông đúc L1"
 CONG_AREA_PERCENT_THR = 40.0     # Cấp 2: % Diện tích vùng giám sát tối thiểu bị lấp đầy để coi là "Rất đông L2"
 CONG_SPEED_THR = 10.0            # Cấp 3: Vận tốc di chuyển tối đa (px/s) để bị coi là "Tắc nghẽn L3"
 MAX_VEHICLE_AREA_RATIO = 0.3     # Bỏ qua những hộp Box nhiễu có diện tích lớn hơn 30% vùng giám sát (Tránh lỗi YOLO)
@@ -59,8 +59,12 @@ class TrafficMonitor:
             self.current_ids_in_roi.append(track_id)
             if track_id not in self.track_history:
                 self.track_history[track_id] = []
-            self.track_history[track_id].append((cx, cy, current_time))
-            self.track_history[track_id] = [p for p in self.track_history[track_id] if current_time - p[2] <= 2.0]
+            # Tránh ghi trùng vị trí khi frame skip (reuse kết quả cũ)
+            # Nếu vị trí giống hệt entry cuối → không thêm (tránh kéo speed về 0)
+            history = self.track_history[track_id]
+            if not history or (history[-1][0] != cx or history[-1][1] != cy):
+                history.append((cx, cy, current_time))
+            self.track_history[track_id] = [p for p in history if current_time - p[2] <= 2.0]
 
     def calculate_speed_and_status(self, current_time, frame_shape):
         """Cần truyền thêm frame.shape (Kích thước video) để tạo Mask"""
