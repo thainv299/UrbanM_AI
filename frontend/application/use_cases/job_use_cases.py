@@ -85,6 +85,7 @@ class JobUseCases:
         self,
         job_id: str,
         input_stream: Any,
+        input_path: Optional[str],
         input_ext: str,
         detection_settings: Dict[str, Any],
     ) -> None:
@@ -149,6 +150,7 @@ class JobUseCases:
         try:
             summary = self.detection_service.process_video(
                 input_stream=input_stream,
+                input_path=input_path,
                 input_ext=input_ext,
                 settings=detection_settings,
                 progress_callback=handle_progress,
@@ -198,8 +200,15 @@ class JobUseCases:
             # Cleanup pause event
             with self.job_lock:
                 self.pause_events.pop(job_id, None)
+        finally:
+            if input_path:
+                import os
+                try:
+                    os.remove(input_path)
+                except Exception:
+                    pass
 
-    def submit_job(self, job_id: str, input_stream: Any, input_ext: str, settings: Dict[str, Any]) -> Job:
+    def submit_job(self, job_id: str, input_stream: Any, input_path: Optional[str], input_ext: str, settings: Dict[str, Any]) -> Job:
         submitted_at = time.time()
         job = self.set_job(
             job_id,
@@ -224,6 +233,7 @@ class JobUseCases:
             self.run_detection_job,
             job_id,
             input_stream,
+            input_path,
             input_ext,
             settings,
         )

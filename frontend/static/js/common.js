@@ -145,6 +145,79 @@
         });
     }
 
+    async function submitFormChunked(url, formData, onProgress, chunkSize = 20 * 1024 * 1024) {
+        let file = null;
+        let fileKey = null;
+        
+        for (const [key, value] of formData.entries()) {
+            if (value instanceof File && value.name) {
+                file = value;
+                fileKey = key;
+                break;
+            }
+        }
+        
+        if (!file || file.size <= chunkSize) {
+            return submitFormWithProgress(url, formData, onProgress);
+        }
+        
+        const uploadId = "upl_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+        const totalChunks = Math.ceil(file.size / chunkSize);
+        let uploadedBytes = 0;
+        
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const chunk = file.slice(start, end);
+            
+            const chunkFormData = new FormData();
+            chunkFormData.append("upload_id", uploadId);
+            chunkFormData.append("chunk_index", i);
+            chunkFormData.append("total_chunks", totalChunks);
+            chunkFormData.append("file_data", chunk, file.name);
+            
+            await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open("POST", "/api/upload-chunk");
+                xhr.withCredentials = true;
+                
+                if (xhr.upload && onProgress) {
+                    xhr.upload.addEventListener("progress", (event) => {
+                        if (event.lengthComputable) {
+                            const currentTotalLoaded = uploadedBytes + event.loaded;
+                            const percent = Math.min(99, Math.round((currentTotalLoaded / file.size) * 100));
+                            onProgress(percent, currentTotalLoaded, file.size);
+                        }
+                    });
+                }
+                
+                xhr.onload = () => {
+                    let payload = null;
+                    try { payload = JSON.parse(xhr.responseText); } catch (e) {}
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        uploadedBytes += chunk.size;
+                        resolve();
+                    } else {
+                        reject(new Error(payload?.error || `Tải lên chunk ${i} thất bại (${xhr.status})`));
+                    }
+                };
+                
+                xhr.onerror = () => reject(new Error("Lỗi mạng khi tải lên."));
+                xhr.send(chunkFormData);
+            });
+        }
+        
+        if (onProgress) {
+            onProgress(100, file.size, file.size);
+        }
+        
+        formData.delete(fileKey);
+        formData.append("upload_id", uploadId);
+        formData.append("original_filename", file.name);
+        
+        return window.portalApi.submitForm(url, formData);
+    }
+
     window.portalApi = {
         get: (url) => request(url, { method: "GET" }),
         post: (url, body) => request(url, { method: "POST", body: JSON.stringify(body) }),
@@ -152,6 +225,7 @@
         delete: (url) => request(url, { method: "DELETE" }),
         submitForm: (url, formData) => request(url, { method: "POST", body: formData }),
         submitFormWithProgress,
+        submitFormChunked,
         showNotice,
         pillText,
         showToast,
