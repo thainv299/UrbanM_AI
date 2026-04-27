@@ -6,7 +6,7 @@ from modules.utils.interactive_telegram_bot import send_alert_with_button
 class TrafficAlertManager:
     def __init__(self):
         # Cấu hình thời gian đếm ngược tĩnh (giây)
-        self.DEBOUNCE_SECONDS = 5.0
+        self.DEBOUNCE_SECONDS = 3.0
         self.TRUE_CLEAR_SECONDS = 5.0 # Số giây đường TRỐNG LIÊN TỤC để được coi là hết kẹt xe hoàn toàn
         self.INTERVAL_UNACK = {1: 300, 2: 60, 3: 30}
         self.SNOOZE_ACK = {1: 900, 2: 600, 3: 300}
@@ -42,7 +42,7 @@ class TrafficAlertManager:
             if self.clear_start_time == 0:
                 self.clear_start_time = current_time
             elif current_time - self.clear_start_time >= self.TRUE_CLEAR_SECONDS:
-                # Đường thật sự vắng trong 15s liên tục -> Hết kẹt xe dứt điểm!
+                # Đường thật sự vắng trong liên tục -> Hết kẹt xe dứt điểm!
                 # Reset lại toàn bộ bộ nhớ cũ và huỷ bỏ mọi Snooze còn tồn đọng.
                 self.last_alert_level = 0
                 self.snooze_until = 0
