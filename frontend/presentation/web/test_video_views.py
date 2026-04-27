@@ -204,6 +204,7 @@ async def api_create_test_job(
             return JSONResponse(status_code=404, content={"ok": False, "error": "Camera được chọn không tồn tại."})
 
     input_stream = None
+    input_path = None
     input_ext = ""
     
     if upload_id:
