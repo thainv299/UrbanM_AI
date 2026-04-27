@@ -264,7 +264,7 @@ function initTestVideoForm() {
         renderStatus({ status: "uploading", message: "Đang tải video lên server..." }, "warning");
 
         try {
-            const data = await window.portalApi.submitFormWithProgress("/api/test-jobs", formData, (percent, loaded, total) => {
+            const data = await window.portalApi.submitFormChunked("/api/test-jobs", formData, (percent, loaded, total) => {
                 const mbLoaded = (loaded / (1024 * 1024)).toFixed(1);
                 const mbTotal = (total / (1024 * 1024)).toFixed(1);
                 const msg = `Đang tải video lên: ${percent}% (${mbLoaded}MB / ${mbTotal}MB)`;

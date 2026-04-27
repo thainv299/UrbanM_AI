@@ -236,6 +236,7 @@ class App:
             target_classes = ["person", "bicycle", "car", "motorcycle", "license_plate", "bus", "truck"]
             
             traffic_monitor = TrafficMonitor(roi_polygon=self.roi_polygon)
+            roi_contour_area = cv2.contourArea(self.roi_polygon)
 
             prev_time = time.time()
             fps_frame_count, current_fps, frame_count = 0, 0.0, 0
@@ -294,10 +295,16 @@ class App:
 
                         # Kiểm tra xem vật thể có nằm trong Vùng ROI hay không
                         if cv2.pointPolygonTest(self.roi_polygon, (cx, cy), False) >= 0:
+                            # Lọc nhiễu: Bỏ qua Bounding Box lớn bất thường (> 30% diện tích ROI)
+                            # Chỉ áp dụng cho person, motorcycle, bicycle, car (bus/truck bản thân đã to)
+                            box_area = (x2 - x1) * (y2 - y1)
+                            if label in ("person", "motorcycle", "bicycle", "car") and roi_contour_area > 0 and box_area > roi_contour_area * 0.3:
+                                continue
+                                
                             box_color = colors.get(cls_id, (255, 255, 255))
 
                             if label == "person":
-                                traffic_monitor.log_person()
+                                traffic_monitor.log_person(bbox=(x1, y1, x2, y2))
                                 cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
                                 cv2.putText(frame, f"ID:{track_id} person", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, box_color, 2)
                                 

@@ -153,12 +153,33 @@ async def test_video_page(request: Request, user=Depends(login_required)):
 
 
 
+@test_video_router.post("/api/upload-chunk")
+async def api_upload_chunk(
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    file_data: UploadFile = File(...)
+):
+    import tempfile
+    temp_dir = Path(tempfile.gettempdir()) / "video_uploads"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    file_path = temp_dir / f"{upload_id}.part"
+    
+    mode = "ab" if chunk_index > 0 else "wb"
+    with open(file_path, mode) as f:
+        content = await file_data.read()
+        f.write(content)
+        
+    return JSONResponse(status_code=200, content={"ok": True})
+
 @test_video_router.post("/api/test-jobs")
 async def api_create_test_job(
     request: Request,
     user=Depends(login_required),
     camera_id: Optional[str] = Form(None),
     video_file: Optional[UploadFile] = File(None),
+    upload_id: Optional[str] = Form(None),
+    original_filename: Optional[str] = Form(None),
     model_path: Optional[str] = Form(None),
     confidence_threshold: Optional[str] = Form(None),
     enable_congestion: Optional[str] = Form(None),
@@ -183,8 +204,24 @@ async def api_create_test_job(
             return JSONResponse(status_code=404, content={"ok": False, "error": "Camera được chọn không tồn tại."})
 
     input_stream = None
+    input_path = None
     input_ext = ""
-    if video_file and video_file.filename:
+    
+    if upload_id:
+        import tempfile
+        import os
+        temp_dir = Path(tempfile.gettempdir()) / "video_uploads"
+        file_path = temp_dir / f"{upload_id}.part"
+        if not file_path.exists():
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Không tìm thấy dữ liệu upload."})
+        input_path = str(file_path)
+        filename = original_filename or "video.mp4"
+        if not container.file_storage.is_allowed_video(filename):
+            try: os.remove(file_path)
+            except: pass
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Định dạng video không được hỗ trợ."})
+        input_ext = Path(filename).suffix.lower()
+    elif video_file and video_file.filename:
         if not container.file_storage.is_allowed_video(video_file.filename):
             return JSONResponse(status_code=400, content={"ok": False, "error": "Định dạng video không được hỗ trợ."})
         input_ext = Path(video_file.filename).suffix.lower()
@@ -213,6 +250,7 @@ async def api_create_test_job(
     job = container.job_use_cases.submit_job(
         job_id=job_id,
         input_stream=input_stream,
+        input_path=input_path,
         input_ext=input_ext,
         settings=test_settings
     )
