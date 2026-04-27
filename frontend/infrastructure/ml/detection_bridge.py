@@ -263,6 +263,9 @@ def process_video(
     if roi_polygon is None:
         raise ValueError("Vùng ROI không hợp lệ.")
 
+    # Tính diện tích ROI 1 lần duy nhất (dùng để lọc box nhiễu trong vòng lặp)
+    roi_contour_area = cv2.contourArea(roi_polygon)
+
     if progress_callback is not None:
         progress_callback(
             {
@@ -406,6 +409,13 @@ def process_video(
                     center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
 
                     if cv2.pointPolygonTest(roi_polygon, (center_x, center_y), False) < 0:
+                        continue
+
+                    # Lọc nhiễu: Bỏ qua Bounding Box lớn bất thường (> 30% diện tích ROI)
+                    # Chỉ áp dụng cho person, motorcycle, bicycle, car (bus/truck bản thân đã to)
+                    SMALL_OBJECT_LABELS = {"person", "motorcycle", "bicycle", "car"}
+                    box_area = (x2 - x1) * (y2 - y1)
+                    if label in SMALL_OBJECT_LABELS and roi_contour_area > 0 and box_area > roi_contour_area * 0.3:
                         continue
 
                     # Xác định màu sắc nhãn

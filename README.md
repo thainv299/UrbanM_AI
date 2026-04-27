@@ -479,6 +479,6 @@ MAX_LOST_FRAMES = 5              # Giữ biển số khi tracker mất dấu
 ### Telegram Alerts
 - ⚠️ Parking warning: Khi WAITING bắt đầu
 - 🚨 Parking violation: Khi xác nhận vi phạm
-- 🚦 Congestion: Debounce 1s, snooze thông minh
+- 🚦 Congestion: Debounce 5s, snooze thông minh
 
 ---
