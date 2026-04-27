@@ -122,16 +122,26 @@ function initTestVideoForm() {
 
         const progress = job.progress || {};
         const queueText = job.status === "queued" && job.queue_position
-            ? `Vi tri trong hang doi: ${job.queue_position}`
+            ? `Vị trí trong hàng đợi: ${job.queue_position}`
             : null;
         const latestText = progress.latest_status || null;
 
+        const statusMap = {
+            "uploading": "Đang Tải Lên",
+            "queued": "Đang Xếp Hàng",
+            "running": "Đang Phân Tích",
+            "completed": "Hoàn Thành",
+            "failed": "Thất Bại",
+            "aborted": "Đã Hủy"
+        };
+        const statusText = statusMap[job.status] || job.status || "Không rõ";
+
         statusPanel.innerHTML = `
             <article class="status-card">
-                <span class="pill ${badgeClass}">${job.status || "Khong ro"}</span>
-                <h4>${job.message || "Dang doi trang thai"}</h4>
+                <span class="pill ${badgeClass}">${statusText}</span>
+                <h4>${job.message || "Đang kết nối hệ thống..."}</h4>
                 ${queueText ? `<p class="muted">${queueText}</p>` : ""}
-                ${latestText ? `<p class="muted">Trang thai: ${latestText}</p>` : ""}
+                ${latestText ? `<p class="muted">Tiến trình: ${latestText}</p>` : ""}
                 ${job.error ? `<p class="muted">${job.error}</p>` : ""}
             </article>
         `;
@@ -174,7 +184,7 @@ function initTestVideoForm() {
     function resetOutputView(message) {
         viewerPanel.hidden = false;
         clearStream();
-        streamOutputNote.textContent = "Video sẽ hiển thị khi backend bắt đầu xử lý.";
+        streamOutputNote.textContent = "Video kết quả sẽ hiển thị tại đây khi hệ thống bắt đầu phân tích.";
         renderPendingSummary(message);
     }
 
@@ -187,7 +197,7 @@ function initTestVideoForm() {
         }
 
         if (job.status === "completed") {
-            streamOutputNote.textContent = "Luồng stream đã hoàn tất.";
+            streamOutputNote.textContent = "Quá trình phân tích đã hoàn tất.";
         } else if (job.status === "failed" || job.status === "aborted") {
             streamOutputNote.textContent = job.error || "Có lỗi xảy ra.";
         }
@@ -206,7 +216,7 @@ function initTestVideoForm() {
             if (job.status === "failed" || job.status === "aborted") {
                 submitButton.disabled = false;
                 if (stopButton) stopButton.style.display = "none";
-                streamOutputNote.textContent = job.error || "Xu ly video that bai hoac da bi dung.";
+                streamOutputNote.textContent = job.error || "Quá trình phân tích đã bị dừng hoặc xảy ra lỗi.";
                 stopPolling();
                 return;
             }
@@ -229,7 +239,7 @@ function initTestVideoForm() {
         stopPolling();
         submitButton.disabled = false;
         if (file) {
-            resetOutputView("Da chon video moi. San sang cho job moi.");
+            resetOutputView("Đã chọn video mới. Sẵn sàng phân tích.");
         }
     });
 
@@ -249,13 +259,25 @@ function initTestVideoForm() {
             return;
         }
 
-        resetOutputView("Job đang được tạo. Stream sẽ được hiển thị ngay khi backend xử lý.");
-
+        resetOutputView("Đang tải video lên server... (0%)");
         submitButton.disabled = true;
-        renderStatus({ status: "queued", message: "Đang gửi yêu cầu về backend..." }, "warning");
+        renderStatus({ status: "uploading", message: "Đang tải video lên server..." }, "warning");
 
         try {
-            const data = await window.portalApi.submitForm("/api/test-jobs", formData);
+            const data = await window.portalApi.submitFormWithProgress("/api/test-jobs", formData, (percent, loaded, total) => {
+                const mbLoaded = (loaded / (1024 * 1024)).toFixed(1);
+                const mbTotal = (total / (1024 * 1024)).toFixed(1);
+                const msg = `Đang tải video lên: ${percent}% (${mbLoaded}MB / ${mbTotal}MB)`;
+                
+                // Update result summary text
+                if (streamOutputNote) {
+                    streamOutputNote.textContent = msg;
+                }
+                
+                // Update status panel
+                renderStatus({ status: "uploading", message: msg }, "warning");
+            });
+
             const job = data.job;
             currentJobId = job.id;
             if (stopButton) {
@@ -271,7 +293,7 @@ function initTestVideoForm() {
             submitButton.disabled = false;
             if (stopButton) stopButton.style.display = "none";
             window.portalApi.showNotice(feedback, error.message, "error");
-            renderStatus({ status: "failed", message: "Khong tao duoc job kiem tra.", error: error.message }, "error");
+            renderStatus({ status: "failed", message: "Không thể bắt đầu phân tích.", error: error.message }, "error");
         }
     });
 

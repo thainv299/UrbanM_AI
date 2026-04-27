@@ -104,12 +104,54 @@
         reader.readAsText(file);
     }
 
+    function submitFormWithProgress(url, formData, onProgress) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", url);
+            xhr.withCredentials = true; // equivalent to credentials: "same-origin"
+
+            if (xhr.upload && onProgress) {
+                xhr.upload.addEventListener("progress", (event) => {
+                    if (event.lengthComputable) {
+                        const percent = Math.round((event.loaded / event.total) * 100);
+                        onProgress(percent, event.loaded, event.total);
+                    }
+                });
+            }
+
+            xhr.onload = () => {
+                let payload = null;
+                const contentType = xhr.getResponseHeader("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                    try {
+                        payload = JSON.parse(xhr.responseText);
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(payload);
+                } else {
+                    reject(new Error(payload?.error || `Yêu cầu thất bại (${xhr.status})`));
+                }
+            };
+
+            xhr.onerror = () => {
+                reject(new Error("Lỗi mạng hoặc kết nối bị từ chối."));
+            };
+
+            xhr.send(formData);
+        });
+    }
+
     window.portalApi = {
         get: (url) => request(url, { method: "GET" }),
         post: (url, body) => request(url, { method: "POST", body: JSON.stringify(body) }),
         put: (url, body) => request(url, { method: "PUT", body: JSON.stringify(body) }),
         delete: (url) => request(url, { method: "DELETE" }),
         submitForm: (url, formData) => request(url, { method: "POST", body: formData }),
+        submitFormWithProgress,
         showNotice,
         pillText,
         showToast,
