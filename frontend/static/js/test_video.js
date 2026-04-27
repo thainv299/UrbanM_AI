@@ -91,7 +91,6 @@ function initTestVideoForm() {
         }
         streamOutput.dataset.jobId = jobId;
         streamOutput.src = streamUrl;
-        streamOutputNote.textContent = "Dang phat truc tiep stream phan tich thoi gian thuc...";
     }
 
     function pickTone(status) {
@@ -123,16 +122,26 @@ function initTestVideoForm() {
 
         const progress = job.progress || {};
         const queueText = job.status === "queued" && job.queue_position
-            ? `Vi tri trong hang doi: ${job.queue_position}`
+            ? `Vị trí trong hàng đợi: ${job.queue_position}`
             : null;
         const latestText = progress.latest_status || null;
 
+        const statusMap = {
+            "uploading": "Đang Tải Lên",
+            "queued": "Đang Xếp Hàng",
+            "running": "Đang Phân Tích",
+            "completed": "Hoàn Thành",
+            "failed": "Thất Bại",
+            "aborted": "Đã Hủy"
+        };
+        const statusText = statusMap[job.status] || job.status || "Không rõ";
+
         statusPanel.innerHTML = `
             <article class="status-card">
-                <span class="pill ${badgeClass}">${job.status || "Khong ro"}</span>
-                <h4>${job.message || "Dang doi trang thai"}</h4>
+                <span class="pill ${badgeClass}">${statusText}</span>
+                <h4>${job.message || "Đang kết nối hệ thống..."}</h4>
                 ${queueText ? `<p class="muted">${queueText}</p>` : ""}
-                ${latestText ? `<p class="muted">Trang thai: ${latestText}</p>` : ""}
+                ${latestText ? `<p class="muted">Tiến trình: ${latestText}</p>` : ""}
                 ${job.error ? `<p class="muted">${job.error}</p>` : ""}
             </article>
         `;
@@ -141,27 +150,23 @@ function initTestVideoForm() {
     function renderSummary(summary) {
         resultSummary.innerHTML = `
             <article class="summary-card">
-                <span>Frames da xu ly</span>
+                <span>Frames đã xử lý</span>
                 <strong>${summary.processed_frames ?? "-"}</strong>
             </article>
             <article class="summary-card">
-                <span>Thoi luong video</span>
+                <span>Thời lượng video</span>
                 <strong>${summary.duration_seconds ?? "-"}s</strong>
             </article>
             <article class="summary-card">
-                <span>FPS xu ly trung binh</span>
+                <span>FPS</span>
                 <strong>${summary.average_processing_fps ?? "-"}</strong>
             </article>
             <article class="summary-card">
-                <span>Mat do cao nhat</span>
+                <span>Mật độ cao nhất</span>
                 <strong>${summary.max_occupancy_percent ?? "-"}%</strong>
             </article>
             <article class="summary-card">
-                <span>Muc giao thong</span>
-                <strong>${summary.highest_traffic_level ?? "-"}</strong>
-            </article>
-            <article class="summary-card">
-                <span>Vi pham do xe</span>
+                <span>Vi phạm đỗ xe</span>
                 <strong>${summary.parking_violation_count ?? "-"}</strong>
             </article>
         `;
@@ -170,7 +175,7 @@ function initTestVideoForm() {
     function renderPendingSummary(message) {
         resultSummary.innerHTML = `
             <article class="summary-card summary-card-wide">
-                <span>Tong quan</span>
+                <span>Tổng quan</span>
                 <strong>${message}</strong>
             </article>
         `;
@@ -179,7 +184,7 @@ function initTestVideoForm() {
     function resetOutputView(message) {
         viewerPanel.hidden = false;
         clearStream();
-        streamOutputNote.textContent = "Video sẽ hiển thị khi backend bắt đầu xử lý.";
+        streamOutputNote.textContent = "Video kết quả sẽ hiển thị tại đây khi hệ thống bắt đầu phân tích.";
         renderPendingSummary(message);
     }
 
@@ -192,9 +197,9 @@ function initTestVideoForm() {
         }
 
         if (job.status === "completed") {
-            streamOutputNote.textContent = "Luong stream da hoan tat. Xem tom tat ben duoi.";
+            streamOutputNote.textContent = "Quá trình phân tích đã hoàn tất.";
         } else if (job.status === "failed" || job.status === "aborted") {
-            streamOutputNote.textContent = job.error || "Job da bi huy hoac that bai.";
+            streamOutputNote.textContent = job.error || "Có lỗi xảy ra.";
         }
     }
 
@@ -211,7 +216,7 @@ function initTestVideoForm() {
             if (job.status === "failed" || job.status === "aborted") {
                 submitButton.disabled = false;
                 if (stopButton) stopButton.style.display = "none";
-                streamOutputNote.textContent = job.error || "Xu ly video that bai hoac da bi dung.";
+                streamOutputNote.textContent = job.error || "Quá trình phân tích đã bị dừng hoặc xảy ra lỗi.";
                 stopPolling();
                 return;
             }
@@ -234,7 +239,7 @@ function initTestVideoForm() {
         stopPolling();
         submitButton.disabled = false;
         if (file) {
-            resetOutputView("Da chon video moi. San sang cho job moi.");
+            resetOutputView("Đã chọn video mới. Sẵn sàng phân tích.");
         }
     });
 
@@ -254,13 +259,25 @@ function initTestVideoForm() {
             return;
         }
 
-        resetOutputView("Job đang được tạo. Stream sẽ được hiển thị ngay khi backend xử lý.");
-
+        resetOutputView("Đang tải video lên server... (0%)");
         submitButton.disabled = true;
-        renderStatus({ status: "queued", message: "Đang gửi yêu cầu về backend..." }, "warning");
+        renderStatus({ status: "uploading", message: "Đang tải video lên server..." }, "warning");
 
         try {
-            const data = await window.portalApi.submitForm("/api/test-jobs", formData);
+            const data = await window.portalApi.submitFormWithProgress("/api/test-jobs", formData, (percent, loaded, total) => {
+                const mbLoaded = (loaded / (1024 * 1024)).toFixed(1);
+                const mbTotal = (total / (1024 * 1024)).toFixed(1);
+                const msg = `Đang tải video lên: ${percent}% (${mbLoaded}MB / ${mbTotal}MB)`;
+                
+                // Update result summary text
+                if (streamOutputNote) {
+                    streamOutputNote.textContent = msg;
+                }
+                
+                // Update status panel
+                renderStatus({ status: "uploading", message: msg }, "warning");
+            });
+
             const job = data.job;
             currentJobId = job.id;
             if (stopButton) {
@@ -269,7 +286,6 @@ function initTestVideoForm() {
             }
             prepareViewer(job);
             renderStatus(job, pickTone(job.status));
-            renderPendingSummary("Backend dang xu ly video. Luong stream se cap nhat truc tiep.");
 
             pollingHandle = setInterval(() => pollJob(job.id), 3000);
             pollJob(job.id);
@@ -277,7 +293,7 @@ function initTestVideoForm() {
             submitButton.disabled = false;
             if (stopButton) stopButton.style.display = "none";
             window.portalApi.showNotice(feedback, error.message, "error");
-            renderStatus({ status: "failed", message: "Khong tao duoc job kiem tra.", error: error.message }, "error");
+            renderStatus({ status: "failed", message: "Không thể bắt đầu phân tích.", error: error.message }, "error");
         }
     });
 
@@ -347,7 +363,6 @@ function initTestVideoForm() {
         // Hỗ trợ Safari
     });
 
-    // Show "Draw ROI" buttons only after video is selected
     const videoFileInput = form?.querySelector('input[name="video_file"]');
     let firstFrameDataUrl = null;
 
@@ -362,22 +377,133 @@ function initTestVideoForm() {
 
             if (hasVideo) {
                 firstFrameDataUrl = null; // Reset
-                const formData = new FormData();
-                formData.append("video_file", file);
+
+                // UX: Disable nút và hiển thị trạng thái đang xử lý
+                buttons.forEach(btn => {
+                    btn.disabled = true;
+                    const originalText = btn.dataset.target === "roi_points" ? "Vẽ ROI" : "Vẽ Vùng";
+                    btn.dataset.originalText = originalText;
+                    btn.textContent = "Đang lấy frame...";
+                });
+
+                const extractLocally = () => new Promise((resolve, reject) => {
+                    const videoURL = URL.createObjectURL(file);
+                    const video = document.createElement("video");
+                    video.muted = true;
+                    video.playsInline = true;
+                    // Dùng metadata để không treo máy
+                    video.preload = "metadata";
+                    video.src = videoURL;
+
+                    let timeoutId = setTimeout(() => {
+                        cleanup();
+                        reject(new Error("Timeout khi trích xuất frame bằng trình duyệt"));
+                    }, 10000);
+
+                    const cleanup = () => {
+                        clearTimeout(timeoutId);
+                        video.pause();
+                        video.src = "";
+                        video.removeAttribute('src');
+                        URL.revokeObjectURL(videoURL);
+                    };
+
+                    // Hàm kiểm tra xem ảnh có bị đen thui không
+                    const isBlankFrame = (ctx, w, h) => {
+                        try {
+                            const imgData = ctx.getImageData(0, 0, w, h).data;
+                            // Quét ngẫu nhiên một số pixel (nhảy 400 pixel) để xem có màu không
+                            for (let i = 0; i < imgData.length; i += 400) {
+                                if (imgData[i] !== 0 || imgData[i + 1] !== 0 || imgData[i + 2] !== 0) {
+                                    return false; // Có màu -> Khung hình tốt
+                                }
+                            }
+                            return true; // Toàn màu đen
+                        } catch (e) {
+                            return false; // Lỗi bảo mật thì cứ cho qua
+                        }
+                    };
+
+                    const attemptExtract = () => {
+                        if (video.videoWidth === 0 || video.videoHeight === 0) return;
+                        try {
+                            const canvas = document.createElement("canvas");
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+                            const ctx = canvas.getContext("2d");
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                            // Bắt lỗi khung hình đen do GPU chưa vẽ kịp
+                            if (isBlankFrame(ctx, canvas.width, canvas.height)) {
+                                return; // Bỏ qua, đợi sự kiện tiếp theo
+                            }
+
+                            const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+                            if (dataUrl.length > 500) {
+                                cleanup();
+                                resolve(dataUrl);
+                            }
+                        } catch (e) {
+                            console.warn("Lỗi vẽ canvas:", e);
+                        }
+                    };
+
+                    // Cách kết hợp truyền thống để đảm bảo GPU phải vẽ hình
+                    video.addEventListener("loadeddata", () => {
+                        attemptExtract();
+                        if (video.duration > 0.1) {
+                            video.currentTime = 0.1;
+                        }
+                    });
+
+                    video.addEventListener("seeked", attemptExtract);
+
+                    video.addEventListener("timeupdate", () => {
+                        if (video.currentTime > 0) attemptExtract();
+                    });
+
+                    video.load();
+                    video.play().catch(e => {
+                        video.currentTime = 0.1;
+                    });
+                });
 
                 try {
-                    // Hiển thị trạng thái đang xử lý nếu cần
-                    console.log("Đang trích xuất frame từ Backend...");
-                    const data = await window.portalApi.submitForm("/api/test-video/extract-frame", formData);
-                    if (data.ok && data.frame_data) {
-                        firstFrameDataUrl = data.frame_data;
-                        console.log(`Đã trích xuất frame (${data.width}x${data.height}) từ Backend.`);
-                    } else {
-                        throw new Error(data.error || "Không thể lấy frame từ Backend.");
+                    console.log("Đang trích xuất frame tại Local...");
+                    firstFrameDataUrl = await extractLocally();
+                    console.log("Trích xuất Local thành công!");
+                } catch (err) {
+                    // UX: Thông báo đang thử gửi đoạn nhỏ lên Server
+                    buttons.forEach(btn => {
+                        btn.textContent = "Đang lấy qua Server (Tối ưu Faststart)...";
+                    });
+
+                    try {
+                        // Chỉ cắt 5MB đầu tiên để gửi lên mạng 
+                        const chunkSize = 5 * 1024 * 1024; // 5 Megabytes
+                        const videoChunk = file.slice(0, chunkSize);
+
+                        const formData = new FormData();
+                        formData.append("video_file", new File([videoChunk], file.name, { type: file.type }));
+
+                        const data = await window.portalApi.submitForm("/api/test-video/extract-frame", formData);
+
+                        if (data.ok && data.frame_data) {
+                            firstFrameDataUrl = data.frame_data;
+                            console.log("Trích xuất qua Server thành công siêu tốc!");
+                        } else {
+                            throw new Error(data.error || "Lỗi backend trả về");
+                        }
+                    } catch (backendErr) {
+                        console.error("Lỗi lấy frame từ Server (5MB):", backendErr);
+                        alert("Thất bại");
                     }
-                } catch (error) {
-                    console.error("Lỗi lấy frame:", error);
-                    alert("Lỗi khi trích xuất frame từ Video. Hãy thử lại hoặc chọn video khác.");
+                } finally {
+                    // Khôi phục nút
+                    buttons.forEach(btn => {
+                        btn.disabled = false;
+                        btn.textContent = btn.dataset.originalText || "Vẽ ROI";
+                    });
                 }
             }
         });

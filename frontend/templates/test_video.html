@@ -182,7 +182,8 @@
             <img id="stream-output" class="preview-frame" alt="AI Analysis Stream"
                 style="width: 100%; max-height: 540px; object-fit: contain; background: #000; border-radius: 8px;">
             <!-- Nút thoát fullscreen, chỉ hiển thị khi ở chế độ toàn màn hình -->
-            <button type="button" id="fullscreen-exit-btn" class="fullscreen-exit-btn" title="Thoát toàn màn hình (ESC)">
+            <button type="button" id="fullscreen-exit-btn" class="fullscreen-exit-btn"
+                title="Thoát toàn màn hình (ESC)">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -237,6 +238,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/roi_tool.js') }}"></script>
-<script src="{{ url_for('static', filename='js/test_video.js') }}"></script>
+<script src="{{ url_for('static', filename='js/roi_tool.js') }}?v=2.0"></script>
+<script src="{{ url_for('static', filename='js/test_video.js') }}?v=3.2"></script>
 {% endblock %}

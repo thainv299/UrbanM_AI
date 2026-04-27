@@ -42,7 +42,32 @@
             <p class="muted">Đang tải dữ liệu...</p>
         </div>
     </div>
+        </div>
+    </div>
 </section>
+
+<style>
+    .plate-thumbnail {
+        width: 100px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 2px solid var(--border);
+        transition: all 0.3s var(--ease);
+        cursor: pointer;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        display: block;
+        margin: 0 auto;
+    }
+    .plate-thumbnail:hover {
+        transform: scale(1.1) translateY(-2px);
+        border-color: var(--brand-blue);
+        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2);
+    }
+    .data-table td {
+        vertical-align: middle;
+    }
+</style>
 
 <script>
 async function loadLatestPlates() {
@@ -92,34 +117,33 @@ function displayPlates(plates) {
                         <th>Biển Số</th>
                         <th style="text-align: center;">Ngày</th>
                         <th style="text-align: center;">Giờ</th>
-                        <th style="text-align: center;">Độ Chính Xác</th>
-                        <th style="text-align: center;">Ảnh</th>
+                        <th style="text-align: center;">Ảnh Xem Lại</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${plates.map(plate => `
+                    ${plates.map(plate => {
+                        const firstImage = plate.image_paths ? plate.image_paths.split(',')[0].replace(/^\/+/,'') : '';
+                        return `
                         <tr>
                             <td>
                                 <strong>${plate.license_plate || 'N/A'}</strong>
                             </td>
-                            <td style="text-align: center;">
+                            <td style="text-align: center; font-weight: 500;">
                                 ${plate.detected_date || 'N/A'}
                             </td>
                             <td style="text-align: center;">
                                 <span class="pill success">${plate.detected_time || '--:--:--'}</span>
                             </td>
                             <td style="text-align: center;">
-                                <span class="pill blue">${((plate.avg_confidence || 0) * 100).toFixed(1)}%</span>
-                            </td>
-                            <td style="text-align: center;">
-                                ${plate.image_paths ? `
-                                    <a href="/${plate.image_paths.split(',')[0].replace(/^\/+/,'')}" target="_blank" class="button secondary xs">
-                                        📷 Xem Ảnh
+                                ${firstImage ? `
+                                    <a href="/${firstImage}" target="_blank" title="Bấm để xem ảnh gốc">
+                                        <img src="/${firstImage}" class="plate-thumbnail" alt="Biển số ${plate.license_plate}" loading="lazy">
                                     </a>
-                                ` : '<span class="badge muted">Không có</span>'}
+                                ` : '<span class="badge muted">Không có ảnh</span>'}
                             </td>
                         </tr>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </tbody>
             </table>
         </div>
