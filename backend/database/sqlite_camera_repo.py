@@ -2,9 +2,9 @@ import json
 import sqlite3
 from typing import List, Optional
 
-from frontend.domain.entities.camera import Camera
-from frontend.domain.repositories.camera_repository import CameraRepository
-from frontend.database.sqlite_db import connect
+from domain.entities.camera import Camera
+from domain.repositories.camera_repository import CameraRepository
+from database.sqlite_db import connect
 
 
 class SqliteCameraRepository(CameraRepository):

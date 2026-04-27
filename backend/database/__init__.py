@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict, Any
 
-from frontend.core.config import DATABASE_PATH as DB_PATH
-from frontend.database.sqlite_db import (
+from core.config import DATABASE_PATH as DB_PATH
+from database.sqlite_db import (
     init_db,
     get_dashboard_stats_data as get_dashboard_stats,
     get_detected_license_plates as list_detected_license_plates,
@@ -9,10 +9,10 @@ from frontend.database.sqlite_db import (
     log_detected_license_plate
 )
 
-from frontend.domain.entities.user import User
-from frontend.domain.entities.camera import Camera
-from frontend.database.sqlite_user_repo import SqliteUserRepository
-from frontend.database.sqlite_camera_repo import SqliteCameraRepository
+from domain.entities.user import User
+from domain.entities.camera import Camera
+from database.sqlite_user_repo import SqliteUserRepository
+from database.sqlite_camera_repo import SqliteCameraRepository
 
 user_repo = SqliteUserRepository()
 camera_repo = SqliteCameraRepository()

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from frontend.domain.entities.camera import Camera
+from domain.entities.camera import Camera
 
 
 class CameraRepository(ABC):

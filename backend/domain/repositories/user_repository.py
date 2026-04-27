@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from frontend.domain.entities.user import User
+from domain.entities.user import User
 
 
 class UserRepository(ABC):

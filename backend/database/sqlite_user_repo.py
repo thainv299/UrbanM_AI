@@ -1,9 +1,9 @@
 import sqlite3
 from typing import List, Optional
 
-from frontend.domain.entities.user import User
-from frontend.domain.repositories.user_repository import UserRepository
-from frontend.database.sqlite_db import connect
+from domain.entities.user import User
+from domain.repositories.user_repository import UserRepository
+from database.sqlite_db import connect
 
 
 class SqliteUserRepository(UserRepository):
