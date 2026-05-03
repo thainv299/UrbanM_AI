@@ -38,24 +38,8 @@ function initTestVideoForm() {
     }
 
     function renderStatus(job) {
-        const statusMap = {
-            "uploading": "Đang Tải Lên",
-            "queued": "Đang Xếp Hàng",
-            "running": "Đang Giám Sát",
-            "completed": "Hoàn Thành",
-            "failed": "Thất Bại",
-            "aborted": "Đã Hủy"
-        };
-        const statusText = statusMap[job.status] || job.status || "Không rõ";
-        const badgeClass = job.status === "running" ? "teal" : (job.status === "completed" ? "teal" : "gray");
-
-        statusPanel.innerHTML = `
-            <article class="status-card" style="padding: 16px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
-                <span class="pill ${badgeClass}" style="margin-bottom: 8px;">${statusText}</span>
-                <h4 style="margin: 0; font-size: 1rem;">${job.message || "Đang xử lý..."}</h4>
-                ${job.error ? `<p class="muted small" style="color: var(--danger); margin-top: 4px;">${job.error}</p>` : ""}
-            </article>
-        `;
+        // Không hiển thị bảng trạng thái chữ nữa theo yêu cầu
+        statusPanel.innerHTML = "";
     }
 
     function renderSummary(summary) {
@@ -63,15 +47,11 @@ function initTestVideoForm() {
             <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
                 <article class="summary-card" style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-main); border-radius: 8px;">
                     <span class="small">Lượt xe qua</span>
-                    <strong>${summary.unique_passed_count ?? "-"}</strong>
+                    <strong>${summary.unique_passed_count ?? "0"}</strong>
                 </article>
                 <article class="summary-card" style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-main); border-radius: 8px;">
                     <span class="small">Vi phạm đỗ xe</span>
-                    <strong>${summary.parking_violation_count ?? "-"}</strong>
-                </article>
-                <article class="summary-card" style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-main); border-radius: 8px;">
-                    <span class="small">Frames xử lý</span>
-                    <strong>${summary.processed_frames ?? "-"}</strong>
+                    <strong>${summary.parking_violation_count ?? "0"}</strong>
                 </article>
             </div>
         `;
@@ -103,21 +83,19 @@ function initTestVideoForm() {
     }
 
     async function startMonitoring(camera) {
-        window.portalApi.showNotice(feedback, `Đang khởi tạo giám sát cho: ${camera.name}...`, "info");
         stopPolling();
         clearStream();
 
         viewerPanel.hidden = false;
         viewerPanel.scrollIntoView({ behavior: "smooth" });
         activeCameraName.textContent = `Camera: ${camera.name}`;
-        streamOutputNote.textContent = "Đang kết nối tới luồng camera...";
+        streamOutputNote.textContent = "Đang kết nối luồng AI...";
         resultSummary.innerHTML = "";
         
-        // Prepare payload (match the expected Form-style data or JSON depending on backend)
         const payload = {
             camera_id: camera.id,
-            roi_points: camera.roi_points ? JSON.stringify(camera.roi_points) : "",
-            no_parking_points: camera.no_parking_points ? JSON.stringify(camera.no_parking_points) : "",
+            roi_points: camera.roi_points ? JSON.stringify({ points: camera.roi_points, ...(camera.roi_meta || {}) }) : "",
+            no_parking_points: camera.no_parking_points ? JSON.stringify({ points: camera.no_parking_points, ...(camera.no_park_meta || {}) }) : "",
             enable_congestion: camera.enable_congestion ? "on" : "off",
             enable_illegal_parking: camera.enable_illegal_parking ? "on" : "off",
             enable_license_plate: camera.enable_license_plate ? "on" : "off",
@@ -125,7 +103,6 @@ function initTestVideoForm() {
         };
 
         try {
-            // submitForm uses FormData, so we convert payload
             const fd = new FormData();
             for (const key in payload) fd.append(key, payload[key]);
 
@@ -165,33 +142,33 @@ function initTestVideoForm() {
         }
 
         previewGrid.innerHTML = allCameras.map((camera) => {
-            const congestionPill = `<span class="pill ${camera.enable_congestion ? "teal" : "gray"}">Tắc nghẽn</span>`;
-            const parkingPill = `<span class="pill ${camera.enable_illegal_parking ? "orange" : "gray"}">Đỗ sai</span>`;
-            const licensePill = `<span class="pill ${camera.enable_license_plate ? "teal" : "gray"}">Biển số</span>`;
+            const createToggle = (feature, label, isChecked) => `
+                <div class="feature-toggle-row">
+                    <span>${label}</span>
+                    <label class="switch">
+                        <input type="checkbox" data-action="toggle" data-feature="${feature}" data-id="${camera.id}" ${isChecked ? "checked" : ""}>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            `;
 
             return `
                 <article class="camera-preview-card" data-id="${camera.id}">
                     <div class="preview-container">
                         <img src="/api/cameras/${camera.id}/snapshot?ts=${Date.now()}" alt="${camera.name}" class="camera-preview-image" data-camera-id="${camera.id}">
                         <div class="status-overlay">
-                            <span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "SẴN SÀNG" : "OFFLINE"}</span>
+                            <span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "LIVE" : "OFFLINE"}</span>
                         </div>
                         <div class="play-hint">▶</div>
                     </div>
                     <div class="camera-body">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                            <h3>${camera.name}</h3>
-                        </div>
-                        <p class="muted tiny" style="margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                            ${camera.stream_source || "Chưa cấu hình nguồn"}
-                        </p>
-                        <div class="pill-row">${congestionPill}${parkingPill}${licensePill}</div>
+                        <h3 style="margin-bottom: 12px;">${camera.name}</h3>
                         
-                        <div class="preview-actions">
-                            <button class="button secondary xs" data-action="toggle" data-feature="enable_congestion" data-id="${camera.id}">Tắc nghẽn</button>
-                            <button class="button secondary xs" data-action="toggle" data-feature="enable_illegal_parking" data-id="${camera.id}">Đỗ sai</button>
-                            <button class="button secondary xs" data-action="toggle" data-feature="enable_license_plate" data-id="${camera.id}">Biển số</button>
-                            <button class="button secondary xs" data-action="toggle" data-feature="is_active" data-id="${camera.id}">Bật/Tắt</button>
+                        <div class="toggles-area">
+                            ${createToggle("enable_congestion", "Tắc nghẽn", camera.enable_congestion)}
+                            ${createToggle("enable_illegal_parking", "Đỗ trái phép", camera.enable_illegal_parking)}
+                            ${createToggle("enable_license_plate", "Biển số xe", camera.enable_license_plate)}
+                            ${createToggle("is_active", "Trạng thái Hoạt động", camera.is_active)}
                         </div>
                     </div>
                 </article>
@@ -222,16 +199,19 @@ function initTestVideoForm() {
     }
 
     if (previewGrid) {
+        previewGrid.addEventListener("change", async (e) => {
+            const toggle = e.target.closest("input[data-action='toggle']");
+            if (toggle) {
+                const id = parseInt(toggle.dataset.id);
+                const feature = toggle.dataset.feature;
+                const value = toggle.checked;
+                await updateCameraFeature(id, feature, value);
+            }
+        });
+
         previewGrid.addEventListener("click", async (e) => {
-            const toggleBtn = e.target.closest("button[data-action='toggle']");
-            if (toggleBtn) {
-                e.stopPropagation();
-                const id = parseInt(toggleBtn.dataset.id);
-                const feature = toggleBtn.dataset.feature;
-                const camera = allCameras.find(c => c.id === id);
-                if (camera) {
-                    await updateCameraFeature(id, feature, !camera[feature]);
-                }
+            // Nếu click vào switch hoặc slider thì bỏ qua (để 'change' xử lý)
+            if (e.target.closest(".switch") || e.target.closest(".slider")) {
                 return;
             }
 

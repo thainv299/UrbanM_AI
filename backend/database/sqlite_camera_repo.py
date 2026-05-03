@@ -9,40 +9,51 @@ from database.sqlite_db import connect
 
 class SqliteCameraRepository(CameraRepository):
 
-    def _load_points(self, raw_value: Optional[str]) -> Optional[List[List[int]]]:
+    def _load_polygon(self, raw_value: Optional[str]):
         if not raw_value:
-            return None
+            return None, {}
         try:
             data = json.loads(raw_value)
-        except json.JSONDecodeError:
-            return None
+        except:
+            return None, {}
             
         points = data
-        if isinstance(data, dict) and "points" in data:
-            points = data["points"]
+        metadata = {}
+        if isinstance(data, dict):
+            points = data.get("points", [])
+            metadata = {k: v for k, v in data.items() if k != "points"}
 
         if not isinstance(points, list):
-            return None
-        normalized: List[List[int]] = []
+            return None, {}
+            
+        normalized: List[List[float]] = []
         for point in points:
             if not isinstance(point, (list, tuple)) or len(point) != 2:
                 continue
-            normalized.append([int(point[0]), int(point[1])])
-        return normalized or None
+            normalized.append([float(point[0]), float(point[1])])
+        return (normalized or None), metadata
 
-    def _dump_points(self, points: Optional[List[List[int]]]) -> Optional[str]:
+    def _dump_polygon(self, points: Optional[List[List[float]]], metadata: Optional[dict]) -> Optional[str]:
         if not points:
             return None
-        return json.dumps(points, ensure_ascii=False)
+        payload = {"points": points}
+        if metadata:
+            payload.update(metadata)
+        return json.dumps(payload, ensure_ascii=False)
 
     def _row_to_camera(self, row: sqlite3.Row) -> Camera:
+        roi_pts, roi_m = self._load_polygon(row["toa_do_vung_chon"])
+        no_park_pts, no_park_m = self._load_polygon(row["toa_do_cam_do"])
+        
         return Camera(
             id=row["id"],
             name=row["ten_camera"],
             stream_source=row["nguon_phat"] or "",
             description=row["mo_ta"] or "",
-            roi_points=self._load_points(row["toa_do_vung_chon"]),
-            no_parking_points=self._load_points(row["toa_do_cam_do"]),
+            roi_points=roi_pts,
+            roi_meta=roi_m,
+            no_parking_points=no_park_pts,
+            no_park_meta=no_park_m,
             enable_congestion=bool(row["bat_phat_hien_un_tac"]),
             enable_illegal_parking=bool(row["bat_phat_hien_do_sai"]),
             enable_license_plate=bool(row["bat_phat_hien_bien_so"]),
@@ -117,8 +128,8 @@ class SqliteCameraRepository(CameraRepository):
                     camera.name,
                     camera.stream_source,
                     camera.description,
-                    self._dump_points(camera.roi_points),
-                    self._dump_points(camera.no_parking_points),
+                    self._dump_polygon(camera.roi_points, camera.roi_meta),
+                    self._dump_polygon(camera.no_parking_points, camera.no_park_meta),
                     int(camera.enable_congestion),
                     int(camera.enable_illegal_parking),
                     int(camera.enable_license_plate),
@@ -149,10 +160,10 @@ class SqliteCameraRepository(CameraRepository):
             values.append(camera.description)
         if camera.roi_points is not None:
             assignments.append("toa_do_vung_chon = ?")
-            values.append(self._dump_points(camera.roi_points))
+            values.append(self._dump_polygon(camera.roi_points, camera.roi_meta))
         if camera.no_parking_points is not None:
             assignments.append("toa_do_cam_do = ?")
-            values.append(self._dump_points(camera.no_parking_points))
+            values.append(self._dump_polygon(camera.no_parking_points, camera.no_park_meta))
         if camera.enable_congestion is not None:
             assignments.append("bat_phat_hien_un_tac = ?")
             values.append(int(camera.enable_congestion))

@@ -81,8 +81,10 @@ def _build_test_settings(form_data: Dict[str, Any], camera: Any) -> Dict[str, An
     if camera is not None:
         if roi_points is None:
             roi_points = camera.roi_points
+            roi_meta = camera.roi_meta or {}
         if no_parking_points is None:
             no_parking_points = camera.no_parking_points
+            no_park_meta = camera.no_park_meta or {}
 
     enable_congestion = True
     if "enable_congestion" in form_data:

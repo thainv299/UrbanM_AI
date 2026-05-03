@@ -19,32 +19,36 @@ class CameraUseCases:
             raise NotFoundError("Không tìm thấy camera.")
         return camera
 
-    def _parse_polygon(self, raw_value: Any) -> Any:
+    def _parse_polygon(self, raw_value: Any):
         if raw_value in (None, "", []):
-            return None
+            return None, {}
+        
+        data = raw_value
         if isinstance(raw_value, str):
             try:
-                raw_value = json.loads(raw_value)
+                data = json.loads(raw_value)
             except json.JSONDecodeError as exc:
                 raise ValidationError("Polygon JSON không hợp lệ.") from exc
 
-        if isinstance(raw_value, dict):
-            if "points" in raw_value and isinstance(raw_value["points"], list):
-                raw_value = raw_value["points"]
+        metadata = {}
+        points = data
+        if isinstance(data, dict):
+            metadata = {k: v for k, v in data.items() if k != "points"}
+            points = data.get("points", [])
 
-        if not isinstance(raw_value, list):
+        if not isinstance(points, list):
             raise ValidationError("Polygon phải là một mảng điểm.")
 
-        points = []
-        for point in raw_value:
+        parsed_points = []
+        for point in points:
             if not isinstance(point, (list, tuple)) or len(point) != 2:
                 raise ValidationError("Polygon phải có định dạng [[x,y], ...].")
-            points.append([int(point[0]), int(point[1])])
+            parsed_points.append([float(point[0]), float(point[1])])
 
-        if len(points) < 3:
+        if len(parsed_points) < 3:
             raise ValidationError("Polygon cần tối thiểu 3 điểm.")
 
-        return points
+        return parsed_points, metadata
 
     def _validate_payload(self, payload: Dict[str, Any]) -> Camera:
         def to_bool(val: Any, default: bool = True) -> bool:
@@ -55,8 +59,8 @@ class CameraUseCases:
         if not name:
             raise ValidationError("Tên camera không được để trống.")
 
-        roi_points = self._parse_polygon(payload.get("roi_points"))
-        no_parking_points = self._parse_polygon(payload.get("no_parking_points"))
+        roi_points, roi_meta = self._parse_polygon(payload.get("roi_points"))
+        no_parking_points, no_park_meta = self._parse_polygon(payload.get("no_parking_points"))
 
         return Camera(
             id=None,
@@ -64,7 +68,9 @@ class CameraUseCases:
             stream_source=str(payload.get("stream_source", "")).strip(),
             description=str(payload.get("description", "")).strip(),
             roi_points=roi_points,
+            roi_meta=roi_meta,
             no_parking_points=no_parking_points,
+            no_park_meta=no_park_meta,
             enable_congestion=to_bool(payload.get("enable_congestion"), True),
             enable_illegal_parking=to_bool(payload.get("enable_illegal_parking"), True),
             enable_license_plate=to_bool(payload.get("enable_license_plate"), True),

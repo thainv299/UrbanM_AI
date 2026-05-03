@@ -8,8 +8,10 @@ class Camera:
     name: str
     stream_source: str = ""
     description: str = ""
-    roi_points: Optional[List[List[int]]] = None
-    no_parking_points: Optional[List[List[int]]] = None
+    roi_points: Optional[List[List[float]]] = None
+    roi_meta: Optional[dict] = None
+    no_parking_points: Optional[List[List[float]]] = None
+    no_park_meta: Optional[dict] = None
     enable_congestion: bool = True
     enable_illegal_parking: bool = True
     enable_license_plate: bool = True
@@ -25,7 +27,9 @@ class Camera:
             "stream_source": self.stream_source,
             "description": self.description,
             "roi_points": self.roi_points,
+            "roi_meta": self.roi_meta,
             "no_parking_points": self.no_parking_points,
+            "no_park_meta": self.no_park_meta,
             "enable_congestion": self.enable_congestion,
             "enable_illegal_parking": self.enable_illegal_parking,
             "enable_license_plate": self.enable_license_plate,

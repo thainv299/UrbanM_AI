@@ -58,11 +58,21 @@ document.addEventListener("DOMContentLoaded", () => {
         
         firstFrameDataUrl = null;
 
-        fields.roiPoints.value = camera?.roi_points ? JSON.stringify(camera.roi_points) : "";
+        if (camera?.roi_points) {
+            const roiData = { points: camera.roi_points, ...(camera.roi_meta || {}) };
+            fields.roiPoints.value = JSON.stringify(roiData);
+        } else {
+            fields.roiPoints.value = "";
+        }
         fields.roiFilePicker.value = "";
         fields.roiStatus.textContent = camera?.roi_points ? "Đã có dữ liệu từ trước." : "Chưa có dữ liệu.";
         
-        fields.noParkingPoints.value = camera?.no_parking_points ? JSON.stringify(camera.no_parking_points) : "";
+        if (camera?.no_parking_points) {
+            const npData = { points: camera.no_parking_points, ...(camera.no_park_meta || {}) };
+            fields.noParkingPoints.value = JSON.stringify(npData);
+        } else {
+            fields.noParkingPoints.value = "";
+        }
         fields.noParkingFilePicker.value = "";
         fields.noParkingStatus.textContent = camera?.no_parking_points ? "Đã có dữ liệu từ trước." : "Chưa có vùng cấm đỗ.";
 
@@ -80,8 +90,23 @@ document.addEventListener("DOMContentLoaded", () => {
     function updateSimulationLayout() {
         const simulationField = document.querySelector(".simulation-field");
         if (!simulationField) return;
-        simulationField.style.display = fields.enableSimulation.checked ? "block" : "none";
-        if (!fields.enableSimulation.checked) {
+        
+        const isSim = fields.enableSimulation.checked;
+        simulationField.style.display = isSim ? "block" : "none";
+        
+        // If simulation is on, the stream source is handled by the file picker
+        // We can hide the text input or make it read-only
+        if (isSim) {
+            fields.streamSource.closest("label").style.display = "none";
+            if (fields.streamSource.value && (fields.streamSource.value.includes("\\") || fields.streamSource.value.includes("/"))) {
+                const parts = fields.streamSource.value.split(/[\\\/]/);
+                fields.simulationVideoStatus.textContent = `Nguồn hiện tại: ${parts[parts.length - 1]}`;
+            }
+        } else {
+            fields.streamSource.closest("label").style.display = "block";
+        }
+
+        if (!isSim) {
             fields.simulationVideoStatus.textContent = "Chế độ giả lập tắt.";
         }
     }
