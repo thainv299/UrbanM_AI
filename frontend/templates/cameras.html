@@ -56,31 +56,66 @@
             </label>
 
             <label class="field">
-                <span>Nguồn Video (RTSP / File)</span>
+                <span>Nguồn Video (RTSP / File / Giả lập)</span>
                 <input type="text" id="stream_source" name="stream_source" placeholder="0, rtsp://..., hoặc đường dẫn file">
             </label>
 
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: flex-end;">
+                <label class="toggle-field" style="margin-bottom: 0;">
+                    <input type="checkbox" id="enable_simulation" name="enable_simulation">
+                    <span>Chế độ Giả lập</span>
+                </label>
+                <label class="field simulation-field" style="display: none; margin-bottom: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <span>Chọn file video giả lập</span>
+                        <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="document.getElementById('simulation_video_file').click()">Chọn file</button>
+                    </div>
+                    <input type="file" id="simulation_video_file" accept=".mp4,.avi,.mov,.mkv,.mpeg,.mpg" style="display: none;">
+                    <div id="simulation_video_status" class="muted small">Chưa chọn video giả lập.</div>
+                </label>
+            </div>
+
             <label class="field">
                 <span>Mô tả chi tiết</span>
-                <textarea id="description" name="description" rows="2" placeholder="Vị trí lắp đặt, ghi chú thêm..."></textarea>
+                <textarea id="description" name="description" rows="1" placeholder="Vị trí lắp đặt, ghi chú thêm..."></textarea>
             </label>
 
             <label class="field">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span>Mô hình YOLO Phân tích</span>
+                <select id="model_path" name="model_path">
+                    {% for model_file in available_models %}
+                    {% set full_model_path = "models/" ~ model_file %}
+                    <option value="{{ full_model_path }}" {% if full_model_path == default_model_path %}selected{% endif %}>
+                        {{ model_file }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label class="field">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; flex-wrap: wrap;">
                     <span>Vùng nhận diện ROI (JSON)</span>
-                    <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="this.nextElementSibling.click()">📁 Chọn file JSON</button>
-                    <input type="file" accept=".json" style="display: none;" onchange="portalApi.readJsonFileToInput(this, 'roi_points')">
+                    <div style="display: flex; gap: 4px;">
+                        <button type="button" class="button secondary xs roi-draw-btn" data-target="roi_points" style="padding: 2px 8px; font-size: 0.75rem; display: inline-flex; align-items: center;">Vẽ ROI</button>
+                        <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="this.nextElementSibling.click()">📁 Chọn file JSON</button>
+                        <input id="roi_file_picker" type="file" accept=".json" style="display: none;">
+                    </div>
                 </div>
                 <textarea id="roi_points" name="roi_points" rows="2" style="font-family: var(--font-mono); font-size: 0.82rem;" placeholder='[[100,80],[900,80],[900,520],[100,520]]'></textarea>
+                <div id="roi_points_status" class="muted small">Chưa có ROI.</div>
             </label>
 
             <label class="field">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; flex-wrap: wrap;">
                     <span>Vùng cấm đỗ xe (JSON)</span>
-                    <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="this.nextElementSibling.click()">📁 Chọn file JSON</button>
-                    <input type="file" accept=".json" style="display: none;" onchange="portalApi.readJsonFileToInput(this, 'no_parking_points')">
+                    <div style="display: flex; gap: 4px;">
+                        <button type="button" class="button secondary xs roi-draw-btn" data-target="no_parking_points" style="padding: 2px 8px; font-size: 0.75rem; display: inline-flex; align-items: center;">Vẽ Vùng</button>
+                        <button type="button" class="button secondary xs" style="padding: 2px 8px; font-size: 0.75rem;" onclick="this.nextElementSibling.click()">📁 Chọn file JSON</button>
+                        <input id="no_parking_file_picker" type="file" accept=".json" style="display: none;">
+                    </div>
                 </div>
                 <textarea id="no_parking_points" name="no_parking_points" rows="2" style="font-family: var(--font-mono); font-size: 0.82rem;" placeholder='[[140,340],[860,340],[860,520],[140,520]]'></textarea>
+                <div id="no_parking_points_status" class="muted small">Chưa có vùng cấm đỗ.</div>
             </label>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -108,25 +143,42 @@
             </div>
         </form>
     </section>
-</div>
+<!-- ROI Drawing Modal -->
+<div id="roi-drawing-modal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; align-items: center; justify-content: center;">
+    <div
+        style="background: white; border-radius: 12px; padding: 20px; max-width: 90%; max-height: 90%; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="margin: 0;">Vẽ Vùng Quan Sát (ROI)</h3>
+            <button type="button" onclick="roiDrawingTool.closeModal()"
+                style="background: none; border: none; font-size: 24px; cursor: pointer; padding: 0;">✕</button>
+        </div>
 
-<!-- Camera preview -->
-<section class="panel margin-top">
-    <div class="panel-header">
-        <div>
-            <p class="eyebrow">Giám sát Trực quan</p>
-            <h3>Xem trước & Điều khiển Nhanh</h3>
+        <div style="margin-bottom: 12px; font-size: 0.9rem; color: #666;">
+            <p style="margin: 0 0 8px 0;"><strong>Hướng dẫn:</strong></p>
+            <ul style="margin: 0; padding-left: 20px;">
+                <li><strong>Click trái:</strong> Thêm điểm</li>
+                <li><strong>Click phải:</strong> Xóa toàn bộ</li>
+                <li><strong>Ctrl+Z:</strong> Xóa điểm cuối</li>
+                <li><strong>Enter:</strong> Xác nhận (ít nhất 3 điểm)</li>
+                <li><strong>ESC:</strong> Hủy</li>
+            </ul>
+        </div>
+
+        <canvas id="roi-canvas"
+            style="border: 2px solid #ddd; border-radius: 8px; background: #000; cursor: crosshair; width: auto; max-width: 100%; height: auto; display: block; margin: 0 auto;"></canvas>
+
+        <div style="display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;">
+            <button type="button" class="button secondary" onclick="roiDrawingTool.closeModal()"
+                style="padding: 8px 16px;">Hủy</button>
+            <button type="button" class="button primary" onclick="roiDrawingTool.confirmPoints()"
+                style="padding: 8px 16px;">Xác nhận</button>
         </div>
     </div>
-    <div id="camera-preview-grid" class="camera-preview-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px;">
-        <div class="empty-state">
-            <span class="empty-icon">📷</span>
-            <p class="muted">Chưa có camera nào để hiển thị preview.</p>
-        </div>
-    </div>
-</section>
+</div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/cameras.js') }}"></script>
+<script src="{{ url_for('static', filename='js/roi_tool.js') }}?v=2.0"></script>
+<script src="{{ url_for('static', filename='js/cameras.js') }}?v=2.0"></script>
 {% endblock %}

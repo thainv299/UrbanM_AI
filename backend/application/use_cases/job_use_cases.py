@@ -88,6 +88,7 @@ class JobUseCases:
         input_path: Optional[str],
         input_ext: str,
         detection_settings: Dict[str, Any],
+        delete_after_job: bool = False
     ) -> None:
         def handle_progress(progress: Dict[str, Any]) -> None:
             # Kiểm tra xem người dùng có đóng tab hay ngắt Stream chưa để dừng xử lý sớm
@@ -201,14 +202,14 @@ class JobUseCases:
             with self.job_lock:
                 self.pause_events.pop(job_id, None)
         finally:
-            if input_path:
+            if delete_after_job and input_path:
                 import os
                 try:
                     os.remove(input_path)
                 except Exception:
                     pass
 
-    def submit_job(self, job_id: str, input_stream: Any, input_path: Optional[str], input_ext: str, settings: Dict[str, Any]) -> Job:
+    def submit_job(self, job_id: str, input_stream: Any, input_path: Optional[str], input_ext: str, settings: Dict[str, Any], delete_after_job: bool = False) -> Job:
         submitted_at = time.time()
         job = self.set_job(
             job_id,
@@ -236,6 +237,7 @@ class JobUseCases:
             input_path,
             input_ext,
             settings,
+            delete_after_job
         )
         return job
 

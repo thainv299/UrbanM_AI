@@ -780,3 +780,113 @@ img, video { display: block; max-width: 100%; }
 .stream-fullscreen-container:-webkit-full-screen .fullscreen-exit-btn {
     display: inline-flex;
 }
+/* ──────────────────────────────────────────────────────────
+   CAMERA PREVIEW GRID & CARDS
+   ────────────────────────────────────────────────────────── */
+.camera-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 24px;
+}
+
+.camera-preview-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    transition: all 0.3s var(--ease);
+    cursor: pointer;
+    position: relative;
+    box-shadow: var(--shadow-soft);
+    display: flex;
+    flex-direction: column;
+}
+
+.camera-preview-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: var(--shadow-float);
+    border-color: var(--brand-blue);
+}
+
+.camera-preview-card .preview-container {
+    height: 180px;
+    background: #000;
+    overflow: hidden;
+    position: relative;
+}
+
+.camera-preview-card .camera-preview-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+    opacity: 0.9;
+}
+
+.camera-preview-card:hover .camera-preview-image {
+    transform: scale(1.1);
+    opacity: 1;
+}
+
+.camera-preview-card .status-overlay {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 2;
+}
+
+.camera-preview-card .camera-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+}
+
+.camera-preview-card h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.camera-preview-card .pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.camera-preview-card .preview-actions {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.camera-preview-card .play-hint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.8);
+    background: rgba(37, 99, 235, 0.9);
+    color: white;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    opacity: 0;
+    transition: all 0.3s var(--ease);
+    z-index: 3;
+    box-shadow: 0 0 20px rgba(37, 99, 235, 0.5);
+}
+
+.camera-preview-card:hover .play-hint {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}

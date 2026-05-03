@@ -1,76 +1,22 @@
 // Initialize immediately since script loads at end of page (after DOM is ready)
 function initTestVideoForm() {
-    const form = document.getElementById("test-video-form");
     const feedback = document.getElementById("test-job-feedback");
     const statusPanel = document.getElementById("job-status-panel");
     const viewerPanel = document.getElementById("viewer-panel");
+    const activeCameraName = document.getElementById("active-camera-name");
     const streamOutput = document.getElementById("stream-output");
     const streamOutputNote = document.getElementById("stream-output-note");
     const resultSummary = document.getElementById("result-summary");
-    const submitButton = document.getElementById("submit-test-job");
-    const uploadInput = form?.querySelector('input[name="video_file"]');
-    const featureCheckboxes = form ? Array.from(form.querySelectorAll('input[type="checkbox"][name^="enable_"]')) : [];
-
-    const testRoiFilePicker = document.getElementById("test_roi_file_picker");
-    const testRoiPoints = document.getElementById("test_roi_points");
-    const testRoiStatus = document.getElementById("test_roi_points_status");
-
-    const testNoParkingFilePicker = document.getElementById("test_no_parking_file_picker");
-    const testNoParkingPoints = document.getElementById("test_no_parking_points");
-    const testNoParkingStatus = document.getElementById("test_no_parking_points_status");
-
     const stopButton = document.getElementById("stop-test-job");
+    const previewGrid = document.getElementById("camera-preview-grid");
+    const refreshGridBtn = document.getElementById("cameras-refresh-grid");
+
     let currentJobId = null;
-
-    if (!form || !uploadInput) {
-        console.error("Form hoặc input video không tìm thấy");
-        return;
-    }
-
-    function handleFileSelect(fileInput, hiddenInput, statusSpan) {
-        fileInput.addEventListener("change", (event) => {
-            const file = event.target.files[0];
-            if (!file) {
-                hiddenInput.value = "";
-                statusSpan.textContent = "Nếu để trống sẽ dùng cấu hình camera.";
-                return;
-            }
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    let parsed = JSON.parse(e.target.result);
-
-                    // Support layout JSON format from main.py {"points": [...]}
-                    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && Array.isArray(parsed.points)) {
-                        parsed = parsed.points;
-                    }
-
-                    if (!Array.isArray(parsed) || parsed.length < 3) {
-                        throw new Error("Dữ liệu JSON phải là mảng tọa độ chứa ít nhất 3 điểm.");
-                    }
-                    hiddenInput.value = JSON.stringify(parsed);
-                    statusSpan.textContent = "Đã tải file thành công.";
-                    statusSpan.style.color = "var(--color-primary, teal)";
-                } catch (error) {
-                    fileInput.value = "";
-                    hiddenInput.value = "";
-                    statusSpan.textContent = "Lỗi file không đúng chuẩn JSON Polygon.";
-                    statusSpan.style.color = "var(--color-danger, red)";
-                }
-            };
-            reader.readAsText(file);
-        });
-    }
-
-    if (testRoiFilePicker && testRoiPoints && testRoiStatus) {
-        handleFileSelect(testRoiFilePicker, testRoiPoints, testRoiStatus);
-    }
-    if (testNoParkingFilePicker && testNoParkingPoints && testNoParkingStatus) {
-        handleFileSelect(testNoParkingFilePicker, testNoParkingPoints, testNoParkingStatus);
-    }
-
     let pollingHandle = null;
+    let allCameras = [];
+    let refreshTimer = null;
 
+    // ── JOB MANAGEMENT ──────────────────────────────────────
     function stopPolling() {
         if (pollingHandle) {
             clearInterval(pollingHandle);
@@ -86,216 +32,113 @@ function initTestVideoForm() {
     }
 
     function startStream(jobId, streamUrl) {
-        if (!streamOutput || !streamUrl) {
-            return;
-        }
+        if (!streamOutput || !streamUrl) return;
         streamOutput.dataset.jobId = jobId;
         streamOutput.src = streamUrl;
     }
 
-    function pickTone(status) {
-        if (status === "failed" || status === "aborted") {
-            return "error";
-        }
-        if (status === "completed") {
-            return "success";
-        }
-        if (status === "queued") {
-            return "warning";
-        }
-        if (status === "running") {
-            return "info";
-        }
-        return "gray";
-    }
-
-    function renderStatus(job, tone = "gray") {
-        const badgeClass = tone === "error"
-            ? "red"
-            : tone === "success"
-                ? "teal"
-                : tone === "warning"
-                    ? "orange"
-                    : tone === "info"
-                        ? "teal"
-                        : "gray";
-
-        const progress = job.progress || {};
-        const queueText = job.status === "queued" && job.queue_position
-            ? `Vị trí trong hàng đợi: ${job.queue_position}`
-            : null;
-        const latestText = progress.latest_status || null;
-
+    function renderStatus(job) {
         const statusMap = {
             "uploading": "Đang Tải Lên",
             "queued": "Đang Xếp Hàng",
-            "running": "Đang Phân Tích",
+            "running": "Đang Giám Sát",
             "completed": "Hoàn Thành",
             "failed": "Thất Bại",
             "aborted": "Đã Hủy"
         };
         const statusText = statusMap[job.status] || job.status || "Không rõ";
+        const badgeClass = job.status === "running" ? "teal" : (job.status === "completed" ? "teal" : "gray");
 
         statusPanel.innerHTML = `
-            <article class="status-card">
-                <span class="pill ${badgeClass}">${statusText}</span>
-                <h4>${job.message || "Đang kết nối hệ thống..."}</h4>
-                ${queueText ? `<p class="muted">${queueText}</p>` : ""}
-                ${latestText ? `<p class="muted">Tiến trình: ${latestText}</p>` : ""}
-                ${job.error ? `<p class="muted">${job.error}</p>` : ""}
+            <article class="status-card" style="padding: 16px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+                <span class="pill ${badgeClass}" style="margin-bottom: 8px;">${statusText}</span>
+                <h4 style="margin: 0; font-size: 1rem;">${job.message || "Đang xử lý..."}</h4>
+                ${job.error ? `<p class="muted small" style="color: var(--danger); margin-top: 4px;">${job.error}</p>` : ""}
             </article>
         `;
     }
 
     function renderSummary(summary) {
         resultSummary.innerHTML = `
-            <article class="summary-card">
-                <span>Frames đã xử lý</span>
-                <strong>${summary.processed_frames ?? "-"}</strong>
-            </article>
-            <article class="summary-card">
-                <span>Thời lượng video</span>
-                <strong>${summary.duration_seconds ?? "-"}s</strong>
-            </article>
-            <article class="summary-card">
-                <span>FPS</span>
-                <strong>${summary.average_processing_fps ?? "-"}</strong>
-            </article>
-            <article class="summary-card">
-                <span>Mật độ cao nhất</span>
-                <strong>${summary.max_occupancy_percent ?? "-"}%</strong>
-            </article>
-            <article class="summary-card">
-                <span>Vi phạm đỗ xe</span>
-                <strong>${summary.parking_violation_count ?? "-"}</strong>
-            </article>
+            <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                <article class="summary-card" style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-main); border-radius: 8px;">
+                    <span class="small">Lượt xe qua</span>
+                    <strong>${summary.unique_passed_count ?? "-"}</strong>
+                </article>
+                <article class="summary-card" style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-main); border-radius: 8px;">
+                    <span class="small">Vi phạm đỗ xe</span>
+                    <strong>${summary.parking_violation_count ?? "-"}</strong>
+                </article>
+                <article class="summary-card" style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-main); border-radius: 8px;">
+                    <span class="small">Frames xử lý</span>
+                    <strong>${summary.processed_frames ?? "-"}</strong>
+                </article>
+            </div>
         `;
-    }
-
-    function renderPendingSummary(message) {
-        resultSummary.innerHTML = `
-            <article class="summary-card summary-card-wide">
-                <span>Tổng quan</span>
-                <strong>${message}</strong>
-            </article>
-        `;
-    }
-
-    function resetOutputView(message) {
-        viewerPanel.hidden = false;
-        clearStream();
-        streamOutputNote.textContent = "Video kết quả sẽ hiển thị tại đây khi hệ thống bắt đầu phân tích.";
-        renderPendingSummary(message);
-    }
-
-    function prepareViewer(job) {
-        viewerPanel.hidden = false;
-
-        // Start stream if available
-        if (job.stream_url && streamOutput.dataset.jobId !== job.id) {
-            startStream(job.id, job.stream_url);
-        }
-
-        if (job.status === "completed") {
-            streamOutputNote.textContent = "Quá trình phân tích đã hoàn tất.";
-        } else if (job.status === "failed" || job.status === "aborted") {
-            streamOutputNote.textContent = job.error || "Có lỗi xảy ra.";
-        }
     }
 
     async function pollJob(jobId) {
         try {
             const data = await window.portalApi.get(`/api/test-jobs/${jobId}`);
             const job = data.job;
-            prepareViewer(job);
-            renderStatus(job, pickTone(job.status));
+            
+            if (job.stream_url && streamOutput.dataset.jobId !== job.id) {
+                startStream(job.id, job.stream_url);
+            }
 
-            if (job.status === "queued" || job.status === "running") {
-                return;
-            }
-            if (job.status === "failed" || job.status === "aborted") {
-                submitButton.disabled = false;
-                if (stopButton) stopButton.style.display = "none";
-                streamOutputNote.textContent = job.error || "Quá trình phân tích đã bị dừng hoặc xảy ra lỗi.";
+            renderStatus(job);
+
+            if (job.status !== "queued" && job.status !== "running") {
                 stopPolling();
-                return;
-            }
-            if (job.status === "completed") {
-                renderSummary(job.summary || {});
-                submitButton.disabled = false;
-                if (stopButton) stopButton.style.display = "none";
-                stopPolling();
+                if (job.status === "completed") {
+                    renderSummary(job.summary || {});
+                    streamOutputNote.textContent = "Giám sát hoàn tất.";
+                } else {
+                    streamOutputNote.textContent = job.error || "Giám sát bị dừng.";
+                }
             }
         } catch (error) {
-            window.portalApi.showNotice(feedback, error.message, "error");
-            submitButton.disabled = false;
-            if (stopButton) stopButton.style.display = "none";
             stopPolling();
         }
     }
 
-    uploadInput.addEventListener("change", () => {
-        const file = uploadInput.files && uploadInput.files[0] ? uploadInput.files[0] : null;
-        stopPolling();
-        submitButton.disabled = false;
-        if (file) {
-            resetOutputView("Đã chọn video mới. Sẵn sàng phân tích.");
-        }
-    });
-
-    form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        window.portalApi.showNotice(feedback, "", "info");
+    async function startMonitoring(camera) {
+        window.portalApi.showNotice(feedback, `Đang khởi tạo giám sát cho: ${camera.name}...`, "info");
         stopPolling();
         clearStream();
 
-        const formData = new FormData(form);
-        featureCheckboxes.forEach((checkbox) => {
-            formData.set(checkbox.name, checkbox.checked ? "true" : "false");
-        });
-        const hasFile = Boolean(formData.get("video_file") && formData.get("video_file").name);
-        if (!hasFile) {
-            window.portalApi.showNotice(feedback, "Hãy chọn file upload.", "error");
-            return;
-        }
-
-        resetOutputView("Đang tải video lên server... (0%)");
-        submitButton.disabled = true;
-        renderStatus({ status: "uploading", message: "Đang tải video lên server..." }, "warning");
+        viewerPanel.hidden = false;
+        viewerPanel.scrollIntoView({ behavior: "smooth" });
+        activeCameraName.textContent = `Camera: ${camera.name}`;
+        streamOutputNote.textContent = "Đang kết nối tới luồng camera...";
+        resultSummary.innerHTML = "";
+        
+        // Prepare payload (match the expected Form-style data or JSON depending on backend)
+        const payload = {
+            camera_id: camera.id,
+            roi_points: camera.roi_points ? JSON.stringify(camera.roi_points) : "",
+            no_parking_points: camera.no_parking_points ? JSON.stringify(camera.no_parking_points) : "",
+            enable_congestion: camera.enable_congestion ? "on" : "off",
+            enable_illegal_parking: camera.enable_illegal_parking ? "on" : "off",
+            enable_license_plate: camera.enable_license_plate ? "on" : "off",
+            model_path: camera.model_path || ""
+        };
 
         try {
-            const data = await window.portalApi.submitFormChunked("/api/test-jobs", formData, (percent, loaded, total) => {
-                const mbLoaded = (loaded / (1024 * 1024)).toFixed(1);
-                const mbTotal = (total / (1024 * 1024)).toFixed(1);
-                const msg = `Đang tải video lên: ${percent}% (${mbLoaded}MB / ${mbTotal}MB)`;
-                
-                // Update result summary text
-                if (streamOutputNote) {
-                    streamOutputNote.textContent = msg;
-                }
-                
-                // Update status panel
-                renderStatus({ status: "uploading", message: msg }, "warning");
-            });
+            // submitForm uses FormData, so we convert payload
+            const fd = new FormData();
+            for (const key in payload) fd.append(key, payload[key]);
 
+            const data = await window.portalApi.submitForm("/api/test-jobs", fd);
             const job = data.job;
             currentJobId = job.id;
-            if (stopButton) {
-                stopButton.style.display = "block";
-                stopButton.disabled = false;
-            }
-            prepareViewer(job);
-            renderStatus(job, pickTone(job.status));
-
+            
             pollingHandle = setInterval(() => pollJob(job.id), 3000);
             pollJob(job.id);
         } catch (error) {
-            submitButton.disabled = false;
-            if (stopButton) stopButton.style.display = "none";
             window.portalApi.showNotice(feedback, error.message, "error");
-            renderStatus({ status: "failed", message: "Không thể bắt đầu phân tích.", error: error.message }, "error");
         }
-    });
+    }
 
     if (stopButton) {
         stopButton.addEventListener("click", async () => {
@@ -303,243 +146,137 @@ function initTestVideoForm() {
             stopButton.disabled = true;
             try {
                 await window.portalApi.post(`/api/test-jobs/${currentJobId}/stop`);
-                window.portalApi.showNotice(feedback, "Đã gửi yêu cầu dừng phân tích.", "info");
+                stopPolling();
+                streamOutputNote.textContent = "Đã dừng giám sát.";
             } catch (error) {
-                window.portalApi.showNotice(feedback, error.message, "error");
+                console.error("Lỗi dừng job:", error);
+            } finally {
                 stopButton.disabled = false;
             }
         });
     }
 
-    window.addEventListener("beforeunload", () => {
-        stopPolling();
-    });
+    // ── CAMERA DASHBOARD GRID ──────────────────────────────
+    function renderPreviewGrid() {
+        if (!previewGrid) return;
+        if (!allCameras.length) {
+            previewGrid.innerHTML = `<div class="empty-state">Chưa có camera nào để hiển thị.</div>`;
+            return;
+        }
 
-    // ── FULLSCREEN VIDEO VIEWER ──────────────────────────────
+        previewGrid.innerHTML = allCameras.map((camera) => {
+            const congestionPill = `<span class="pill ${camera.enable_congestion ? "teal" : "gray"}">Tắc nghẽn</span>`;
+            const parkingPill = `<span class="pill ${camera.enable_illegal_parking ? "orange" : "gray"}">Đỗ sai</span>`;
+            const licensePill = `<span class="pill ${camera.enable_license_plate ? "teal" : "gray"}">Biển số</span>`;
+
+            return `
+                <article class="camera-preview-card" data-id="${camera.id}">
+                    <div class="preview-container">
+                        <img src="/api/cameras/${camera.id}/snapshot?ts=${Date.now()}" alt="${camera.name}" class="camera-preview-image" data-camera-id="${camera.id}">
+                        <div class="status-overlay">
+                            <span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "SẴN SÀNG" : "OFFLINE"}</span>
+                        </div>
+                        <div class="play-hint">▶</div>
+                    </div>
+                    <div class="camera-body">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <h3>${camera.name}</h3>
+                        </div>
+                        <p class="muted tiny" style="margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${camera.stream_source || "Chưa cấu hình nguồn"}
+                        </p>
+                        <div class="pill-row">${congestionPill}${parkingPill}${licensePill}</div>
+                        
+                        <div class="preview-actions">
+                            <button class="button secondary xs" data-action="toggle" data-feature="enable_congestion" data-id="${camera.id}">Tắc nghẽn</button>
+                            <button class="button secondary xs" data-action="toggle" data-feature="enable_illegal_parking" data-id="${camera.id}">Đỗ sai</button>
+                            <button class="button secondary xs" data-action="toggle" data-feature="enable_license_plate" data-id="${camera.id}">Biển số</button>
+                            <button class="button secondary xs" data-action="toggle" data-feature="is_active" data-id="${camera.id}">Bật/Tắt</button>
+                        </div>
+                    </div>
+                </article>
+            `;
+        }).join("");
+    }
+
+    async function loadAllCameras() {
+        try {
+            const data = await window.portalApi.get("/api/cameras");
+            allCameras = data.cameras || [];
+            renderPreviewGrid();
+        } catch (error) {
+            console.error("Lỗi tải camera grid:", error);
+        }
+    }
+
+    async function updateCameraFeature(cameraId, feature, value) {
+        const camera = allCameras.find(c => c.id === cameraId);
+        if (!camera) return;
+        const payload = { ...camera, [feature]: value };
+        try {
+            await window.portalApi.put(`/api/cameras/${cameraId}`, payload);
+            await loadAllCameras();
+        } catch (error) {
+            window.portalApi.showNotice(feedback, "Lỗi cập nhật camera: " + error.message, "error");
+        }
+    }
+
+    if (previewGrid) {
+        previewGrid.addEventListener("click", async (e) => {
+            const toggleBtn = e.target.closest("button[data-action='toggle']");
+            if (toggleBtn) {
+                e.stopPropagation();
+                const id = parseInt(toggleBtn.dataset.id);
+                const feature = toggleBtn.dataset.feature;
+                const camera = allCameras.find(c => c.id === id);
+                if (camera) {
+                    await updateCameraFeature(id, feature, !camera[feature]);
+                }
+                return;
+            }
+
+            const card = e.target.closest(".camera-preview-card");
+            if (card) {
+                const id = parseInt(card.dataset.id);
+                const camera = allCameras.find(c => c.id === id);
+                if (camera) {
+                    startMonitoring(camera);
+                }
+            }
+        });
+    }
+
+    if (refreshGridBtn) {
+        refreshGridBtn.addEventListener("click", loadAllCameras);
+    }
+
+    function refreshSnapshots() {
+        if (!previewGrid) return;
+        previewGrid.querySelectorAll("img[data-camera-id]").forEach(img => {
+            img.src = `/api/cameras/${img.dataset.cameraId}/snapshot?ts=${Date.now()}`;
+        });
+    }
+
+    // Fullscreen logic
     const fsContainer = document.getElementById("stream-fullscreen-container");
     const fsEnterBtn = document.getElementById("fullscreen-btn");
     const fsExitBtn = document.getElementById("fullscreen-exit-btn");
 
-    function enterFullscreen() {
-        if (!fsContainer) return;
-        if (fsContainer.requestFullscreen) {
-            fsContainer.requestFullscreen();
-        } else if (fsContainer.webkitRequestFullscreen) {
-            fsContainer.webkitRequestFullscreen(); // Safari
-        } else if (fsContainer.msRequestFullscreen) {
-            fsContainer.msRequestFullscreen(); // IE/Edge cũ
-        }
-    }
-
-    function exitFullscreen() {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        } else if (document.msExitFullscreen) {
-            document.msExitFullscreen();
-        }
-    }
-
-    // Nút "Toàn màn hình"
     if (fsEnterBtn) {
-        fsEnterBtn.addEventListener("click", enterFullscreen);
+        fsEnterBtn.addEventListener("click", () => {
+            if (fsContainer.requestFullscreen) fsContainer.requestFullscreen();
+            else if (fsContainer.webkitRequestFullscreen) fsContainer.webkitRequestFullscreen();
+        });
     }
-
-    // Nút "Thoát (ESC)" bên trong fullscreen
     if (fsExitBtn) {
-        fsExitBtn.addEventListener("click", exitFullscreen);
-    }
-
-    // Đồng bộ trạng thái khi người dùng bấm ESC (trình duyệt tự exit fullscreen)
-    document.addEventListener("fullscreenchange", () => {
-        const isFs = !!document.fullscreenElement;
-        if (fsEnterBtn) {
-            fsEnterBtn.querySelector("span, svg + *")
-            // Cập nhật text nút nếu cần (tuỳ chọn)
-        }
-    });
-    document.addEventListener("webkitfullscreenchange", () => {
-        // Hỗ trợ Safari
-    });
-
-    const videoFileInput = form?.querySelector('input[name="video_file"]');
-    let firstFrameDataUrl = null;
-
-    if (videoFileInput) {
-        videoFileInput.addEventListener("change", async (e) => {
-            const file = videoFileInput.files && videoFileInput.files[0] ? videoFileInput.files[0] : null;
-            const hasVideo = !!file;
-            const buttons = document.querySelectorAll(".roi-draw-btn");
-            buttons.forEach((btn) => {
-                btn.style.display = hasVideo ? "inline-block" : "none";
-            });
-
-            if (hasVideo) {
-                firstFrameDataUrl = null; // Reset
-
-                // UX: Disable nút và hiển thị trạng thái đang xử lý
-                buttons.forEach(btn => {
-                    btn.disabled = true;
-                    const originalText = btn.dataset.target === "roi_points" ? "Vẽ ROI" : "Vẽ Vùng";
-                    btn.dataset.originalText = originalText;
-                    btn.textContent = "Đang lấy frame...";
-                });
-
-                const extractLocally = () => new Promise((resolve, reject) => {
-                    const videoURL = URL.createObjectURL(file);
-                    const video = document.createElement("video");
-                    video.muted = true;
-                    video.playsInline = true;
-                    // Dùng metadata để không treo máy
-                    video.preload = "metadata";
-                    video.src = videoURL;
-
-                    let timeoutId = setTimeout(() => {
-                        cleanup();
-                        reject(new Error("Timeout khi trích xuất frame bằng trình duyệt"));
-                    }, 10000);
-
-                    const cleanup = () => {
-                        clearTimeout(timeoutId);
-                        video.pause();
-                        video.src = "";
-                        video.removeAttribute('src');
-                        URL.revokeObjectURL(videoURL);
-                    };
-
-                    // Hàm kiểm tra xem ảnh có bị đen thui không
-                    const isBlankFrame = (ctx, w, h) => {
-                        try {
-                            const imgData = ctx.getImageData(0, 0, w, h).data;
-                            // Quét ngẫu nhiên một số pixel (nhảy 400 pixel) để xem có màu không
-                            for (let i = 0; i < imgData.length; i += 400) {
-                                if (imgData[i] !== 0 || imgData[i + 1] !== 0 || imgData[i + 2] !== 0) {
-                                    return false; // Có màu -> Khung hình tốt
-                                }
-                            }
-                            return true; // Toàn màu đen
-                        } catch (e) {
-                            return false; // Lỗi bảo mật thì cứ cho qua
-                        }
-                    };
-
-                    const attemptExtract = () => {
-                        if (video.videoWidth === 0 || video.videoHeight === 0) return;
-                        try {
-                            const canvas = document.createElement("canvas");
-                            canvas.width = video.videoWidth;
-                            canvas.height = video.videoHeight;
-                            const ctx = canvas.getContext("2d");
-                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                            // Bắt lỗi khung hình đen do GPU chưa vẽ kịp
-                            if (isBlankFrame(ctx, canvas.width, canvas.height)) {
-                                return; // Bỏ qua, đợi sự kiện tiếp theo
-                            }
-
-                            const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
-                            if (dataUrl.length > 500) {
-                                cleanup();
-                                resolve(dataUrl);
-                            }
-                        } catch (e) {
-                            console.warn("Lỗi vẽ canvas:", e);
-                        }
-                    };
-
-                    // Cách kết hợp truyền thống để đảm bảo GPU phải vẽ hình
-                    video.addEventListener("loadeddata", () => {
-                        attemptExtract();
-                        if (video.duration > 0.1) {
-                            video.currentTime = 0.1;
-                        }
-                    });
-
-                    video.addEventListener("seeked", attemptExtract);
-
-                    video.addEventListener("timeupdate", () => {
-                        if (video.currentTime > 0) attemptExtract();
-                    });
-
-                    video.load();
-                    video.play().catch(e => {
-                        video.currentTime = 0.1;
-                    });
-                });
-
-                try {
-                    console.log("Đang trích xuất frame tại Local...");
-                    firstFrameDataUrl = await extractLocally();
-                    console.log("Trích xuất Local thành công!");
-                } catch (err) {
-                    // UX: Thông báo đang thử gửi đoạn nhỏ lên Server
-                    buttons.forEach(btn => {
-                        btn.textContent = "Đang lấy qua Server (Tối ưu Faststart)...";
-                    });
-
-                    try {
-                        // Chỉ cắt 5MB đầu tiên để gửi lên mạng 
-                        const chunkSize = 5 * 1024 * 1024; // 5 Megabytes
-                        const videoChunk = file.slice(0, chunkSize);
-
-                        const formData = new FormData();
-                        formData.append("video_file", new File([videoChunk], file.name, { type: file.type }));
-
-                        const data = await window.portalApi.submitForm("/api/test-video/extract-frame", formData);
-
-                        if (data.ok && data.frame_data) {
-                            firstFrameDataUrl = data.frame_data;
-                            console.log("Trích xuất qua Server thành công siêu tốc!");
-                        } else {
-                            throw new Error(data.error || "Lỗi backend trả về");
-                        }
-                    } catch (backendErr) {
-                        console.error("Lỗi lấy frame từ Server (5MB):", backendErr);
-                        alert("Thất bại");
-                    }
-                } finally {
-                    // Khôi phục nút
-                    buttons.forEach(btn => {
-                        btn.disabled = false;
-                        btn.textContent = btn.dataset.originalText || "Vẽ ROI";
-                    });
-                }
-            }
+        fsExitBtn.addEventListener("click", () => {
+            if (document.exitFullscreen) document.exitFullscreen();
         });
     }
 
-    // Setup ROI Draw buttons
-    document.querySelectorAll(".roi-draw-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-            e.preventDefault();
-            if (!firstFrameDataUrl) {
-                alert("Chưa thể trích xuất frame đầu tiên. Vui lòng chọn lại video.");
-                return;
-            }
-            const targetId = btn.dataset.target;
-
-            // Check if tool is initialized
-            if (!window.roiDrawingTool || !window.roiDrawingTool.modal) {
-                if (window.roiDrawingTool && typeof window.roiDrawingTool.init === 'function') {
-                    window.roiDrawingTool.init();
-                }
-            }
-
-            if (window.roiDrawingTool && typeof window.roiDrawingTool.openModal === 'function') {
-                window.roiDrawingTool.openModal(targetId, firstFrameDataUrl);
-            } else {
-                console.error("roiDrawingTool is not properly initialized");
-                alert("Công cụ vẽ ROI chưa sẵn sàng. Vui lòng thử lại sau giây lát.");
-            }
-        });
-    });
+    // Khởi động
+    loadAllCameras();
+    refreshTimer = setInterval(refreshSnapshots, 10000); // 10s refresh for snapshots
 }
 
-// Khởi tạo form
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initTestVideoForm);
-} else {
-    initTestVideoForm();
-}
-
+document.addEventListener('DOMContentLoaded', initTestVideoForm);

@@ -208,7 +208,9 @@ window.roiDrawingTool = {
 };
 
 // Initialize when DOM is ready
-if (document.readyState === 'loading') {
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => window.roiDrawingTool.init());
+} else {
     window.roiDrawingTool.init();
 }
 

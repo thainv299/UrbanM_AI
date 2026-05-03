@@ -381,7 +381,13 @@ def process_video(
             frame_start_time = time.time()
             success, frame = capture.read()
             if not success:
-                break
+                # Nếu là file video (total_frames > 0) thì quay lại từ đầu để lặp liên tục
+                if total_frames > 0:
+                    capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    success, frame = capture.read()
+                    if not success: break
+                else:
+                    break
 
             clean_frame = frame.copy()
             if enable_illegal_parking:
