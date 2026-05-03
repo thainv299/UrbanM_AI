@@ -783,10 +783,16 @@ img, video { display: block; max-width: 100%; }
 /* ──────────────────────────────────────────────────────────
    CAMERA PREVIEW GRID & CARDS
    ────────────────────────────────────────────────────────── */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .camera-preview-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(320px, 400px));
     gap: 24px;
+    justify-content: center;
 }
 
 .camera-preview-card {
@@ -803,9 +809,18 @@ img, video { display: block; max-width: 100%; }
 }
 
 .camera-preview-card:hover {
-    transform: translateY(-8px) scale(1.02);
-    box-shadow: var(--shadow-float);
-    border-color: var(--brand-blue);
+    transform: translateY(-8px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    border-color: var(--brand-blue) !important;
+}
+
+.camera-preview-card:hover .camera-preview-image {
+    transform: scale(1.1);
+}
+
+.camera-preview-card:hover .play-hint {
+    opacity: 1 !important;
+    transform: translate(-50%, -50%) scale(1) !important;
 }
 
 .camera-preview-card .preview-container {

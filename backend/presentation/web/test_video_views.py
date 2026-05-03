@@ -116,15 +116,18 @@ def _build_test_settings(form_data: Dict[str, Any], camera: Any) -> Dict[str, An
             return int(val) if val not in (None, "") else d
         except: return d
 
+    from database.sqlite_db import get_system_settings
+    sys_settings = get_system_settings()
+
     return {
         "model_path": str(model_path),
-        "confidence_threshold": _parse_float(form_data.get("confidence_threshold"), 0.32),
+        "confidence_threshold": _parse_float(form_data.get("confidence_threshold"), sys_settings.get("confidence", 0.32)),
         "enable_congestion": enable_congestion,
         "enable_illegal_parking": enable_illegal_parking,
         "enable_license_plate": enable_license_plate,
         "stop_seconds": _parse_float(form_data.get("stop_seconds"), 30.0),
         "parking_move_threshold_px": _parse_float(form_data.get("parking_move_threshold_px"), 10.0),
-        "process_every_n_frames": _parse_int(form_data.get("process_every_n_frames"), 2),
+        "process_every_n_frames": _parse_int(form_data.get("process_every_n_frames"), sys_settings.get("frame_skip", 2)),
         "roi_points": roi_points,
         "roi_meta": roi_meta,
         "no_parking_points": no_parking_points,

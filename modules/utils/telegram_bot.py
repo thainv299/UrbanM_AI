@@ -7,7 +7,7 @@ def send_telegram_image(
     caption: str,
     bot_token: str | None = None,
     chat_id: str | None = None,
-    timeout_seconds: int = 60,
+    timeout_seconds: int = 10,
 ) -> bool:
     """Gửi ảnh qua Telegram"""
     bot_token = (bot_token or os.getenv("TELEGRAM_BOT_TOKEN", "")).strip()
@@ -38,7 +38,7 @@ def send_telegram_video(
     caption: str,
     bot_token: str | None = None,
     chat_id: str | None = None,
-    timeout_seconds: int = 60,
+    timeout_seconds: int = 10,
 ) -> bool:
     """Gửi video qua Telegram"""
     bot_token = (bot_token or os.getenv("TELEGRAM_BOT_TOKEN", "")).strip()

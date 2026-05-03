@@ -125,7 +125,18 @@ async def api_update_camera(camera_id: int, payload: Dict[str, Any], user=Depend
     if isinstance(user, RedirectResponse):
         return user
     try:
+        # Kiểm tra trạng thái is_active trước và sau khi update
+        is_active_requested = payload.get("is_active")
+        
         updated = container.camera_use_cases.update_camera(camera_id, payload)
+        
+        # Đồng bộ luồng AI nền
+        if is_active_requested is False:
+            container.job_use_cases.stop_camera_jobs(camera_id)
+        elif is_active_requested is True:
+            # Khởi động lại nếu chưa chạy
+            container.job_use_cases.start_active_cameras(container.camera_use_cases)
+            
         return {"ok": True, "camera": updated.to_dict()}
     except AppError as exc:
         return JSONResponse(status_code=exc.status_code, content={"ok": False, "error": exc.message})
@@ -139,6 +150,8 @@ async def api_delete_camera(camera_id: int, user=Depends(login_required)):
         return user
     try:
         container.camera_use_cases.delete_camera(camera_id)
+        # Dừng toàn bộ luồng AI liên quan (nền + test)
+        container.job_use_cases.stop_camera_jobs(camera_id)
         return {"ok": True}
     except AppError as exc:
         return JSONResponse(status_code=exc.status_code, content={"ok": False, "error": exc.message})

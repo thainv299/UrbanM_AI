@@ -423,8 +423,6 @@ def process_video(
 
             # Vòng lặp chính xử lý detection
             for result in results:
-                if frame_index % 100 == 0:
-                    print(f"[AI] Frame {frame_index} found {len(result.boxes)} objects")
                 for box in result.boxes:
                     label = _canonical_label(model.names[int(box.cls[0])])
                     if label not in DETECTABLE_LABELS: continue

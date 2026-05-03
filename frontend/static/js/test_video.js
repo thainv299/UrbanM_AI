@@ -29,12 +29,20 @@ function initTestVideoForm() {
             streamOutput.removeAttribute("src");
             delete streamOutput.dataset.jobId;
         }
+        const loader = document.getElementById('stream-loader');
+        if (loader) {
+            loader.style.display = 'flex';
+            const spinner = loader.querySelector('.loader-spinner');
+            if (spinner) spinner.style.display = 'block';
+        }
     }
 
     function startStream(jobId, streamUrl) {
         if (!streamOutput || !streamUrl) return;
         streamOutput.dataset.jobId = jobId;
         streamOutput.src = streamUrl;
+        const loader = document.getElementById('stream-loader');
+        if (loader) loader.style.display = 'none';
     }
 
     function renderStatus(job) {
@@ -61,9 +69,16 @@ function initTestVideoForm() {
         try {
             const data = await window.portalApi.get(`/api/test-jobs/${jobId}`);
             const job = data.job;
-            
+
             if (job.stream_url && streamOutput.dataset.jobId !== job.id) {
                 startStream(job.id, job.stream_url);
+            }
+
+            // Cập nhật text loading nếu đang chờ
+            const loaderText = document.getElementById('stream-loader-text');
+            if (loaderText) {
+                if (job.status === "queued") loaderText.textContent = "Đang chờ đến lượt xử lý AI...";
+                else if (job.status === "running" && !job.stream_url) loaderText.textContent = "Đang khởi tạo mô hình & luồng dữ liệu...";
             }
 
             renderStatus(job);
@@ -72,9 +87,14 @@ function initTestVideoForm() {
                 stopPolling();
                 if (job.status === "completed") {
                     renderSummary(job.summary || {});
-                    streamOutputNote.textContent = "Giám sát hoàn tất.";
-                } else {
-                    streamOutputNote.textContent = job.error || "Giám sát bị dừng.";
+                } else if (job.status === "failed") {
+                    const loader = document.getElementById('stream-loader');
+                    if (loader) {
+                        loader.style.display = 'flex';
+                        const spinner = loader.querySelector('.loader-spinner');
+                        if (spinner) spinner.style.display = 'none';
+                        if (loaderText) loaderText.textContent = "Lỗi: " + (job.error || "Không thể kết nối");
+                    }
                 }
             }
         } catch (error) {
@@ -89,9 +109,14 @@ function initTestVideoForm() {
         viewerPanel.hidden = false;
         viewerPanel.scrollIntoView({ behavior: "smooth" });
         activeCameraName.textContent = `Camera: ${camera.name}`;
-        streamOutputNote.textContent = "Đang kết nối luồng AI...";
-        resultSummary.innerHTML = "";
         
+        const loader = document.getElementById('stream-loader');
+        const loaderText = document.getElementById('stream-loader-text');
+        if (loader) loader.style.display = 'flex';
+        if (loaderText) loaderText.textContent = "Đang kết nối luồng AI...";
+        
+        resultSummary.innerHTML = "";
+
         const payload = {
             camera_id: camera.id,
             roi_points: camera.roi_points ? JSON.stringify({ points: camera.roi_points, ...(camera.roi_meta || {}) }) : "",
@@ -109,7 +134,7 @@ function initTestVideoForm() {
             const data = await window.portalApi.submitForm("/api/test-jobs", fd);
             const job = data.job;
             currentJobId = job.id;
-            
+
             pollingHandle = setInterval(() => pollJob(job.id), 3000);
             pollJob(job.id);
         } catch (error) {
@@ -124,7 +149,13 @@ function initTestVideoForm() {
             try {
                 await window.portalApi.post(`/api/test-jobs/${currentJobId}/stop`);
                 stopPolling();
-                streamOutputNote.textContent = "Đã dừng giám sát.";
+                const loader = document.getElementById('stream-loader');
+                const loaderText = document.getElementById('stream-loader-text');
+                const spinner = document.querySelector('.loader-spinner');
+                if (loader) loader.style.display = 'flex';
+                if (spinner) spinner.style.display = 'none';
+                if (loaderText) loaderText.textContent = "Đã dừng giám sát.";
+                streamOutput.src = "";
             } catch (error) {
                 console.error("Lỗi dừng job:", error);
             } finally {
@@ -143,8 +174,8 @@ function initTestVideoForm() {
 
         previewGrid.innerHTML = allCameras.map((camera) => {
             const createToggle = (feature, label, isChecked) => `
-                <div class="feature-toggle-row">
-                    <span>${label}</span>
+                <div class="feature-toggle-row" style="padding: 8px 4px; border-bottom: 1px solid rgba(0,0,0,0.05);">
+                    <span style="font-size: 0.85rem; font-weight: 500; color: #475569;">${label}</span>
                     <label class="switch">
                         <input type="checkbox" data-action="toggle" data-feature="${feature}" data-id="${camera.id}" ${isChecked ? "checked" : ""}>
                         <span class="slider"></span>
@@ -153,22 +184,44 @@ function initTestVideoForm() {
             `;
 
             return `
-                <article class="camera-preview-card" data-id="${camera.id}">
-                    <div class="preview-container">
-                        <img src="/api/cameras/${camera.id}/snapshot?ts=${Date.now()}" alt="${camera.name}" class="camera-preview-image" data-camera-id="${camera.id}">
-                        <div class="status-overlay">
-                            <span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "LIVE" : "OFFLINE"}</span>
+                <article class="camera-preview-card" data-id="${camera.id}" style="border: 1px solid #E2E8F0; border-radius: 16px; overflow: hidden; background: #fff; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); max-width: 400px;">
+                    <div class="preview-container" style="position: relative; height: 180px; background: #000; overflow: hidden;">
+                        <img src="/api/cameras/${camera.id}/snapshot?ts=${Date.now()}" alt="${camera.name}" class="camera-preview-image" data-camera-id="${camera.id}" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease;">
+                        <div class="status-overlay" style="position: absolute; top: 12px; left: 12px; z-index: 2;">
+                            <span class="badge ${camera.is_active ? "success" : "muted"}" style="box-shadow: 0 4px 12px rgba(0,0,0,0.2); backdrop-filter: blur(8px); padding: 6px 12px; font-weight: 700; font-size: 11px; letter-spacing: 0.05em;">
+                                ${camera.is_active ? "● LIVE" : "● OFFLINE"}
+                            </span>
                         </div>
-                        <div class="play-hint">▶</div>
+                        <div class="model-badge" style="position: absolute; bottom: 12px; right: 12px; background: rgba(15, 23, 42, 0.7); color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 700; backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.1);">
+                            ${camera.model_path ? camera.model_path.split(/[\\/]/).pop() : "YOLO26"}
+                        </div>
+                        <div class="play-hint" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 56px; height: 56px; background: var(--brand-blue); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; opacity: 0; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 30px rgba(37, 99, 235, 0.5);">
+                            ▶
+                        </div>
                     </div>
-                    <div class="camera-body">
-                        <h3 style="margin-bottom: 12px;">${camera.name}</h3>
+                    <div class="camera-body" style="padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #0F172A;">${camera.name}</h3>
+                            <span style="font-size: 10px; color: #94A3B8; font-weight: 700; background: #F1F5F9; padding: 2px 8px; border-radius: 4px;">ID: ${camera.id}</span>
+                        </div>
                         
-                        <div class="toggles-area">
+                        <div class="toggles-area" style="background: #F8FAFC; padding: 14px; border-radius: 14px; border: 1px solid #F1F5F9;">
                             ${createToggle("enable_congestion", "Tắc nghẽn", camera.enable_congestion)}
                             ${createToggle("enable_illegal_parking", "Đỗ trái phép", camera.enable_illegal_parking)}
                             ${createToggle("enable_license_plate", "Biển số xe", camera.enable_license_plate)}
-                            ${createToggle("is_active", "Trạng thái Hoạt động", camera.is_active)}
+                        </div>
+                        
+                        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #F1F5F9; display: flex; justify-content: space-between; align-items: center;">
+                             <span style="font-size: 11px; color: #64748B; font-weight: 500;">Bấm vào ảnh để xem chi tiết</span>
+                             <div class="switch-row" style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 11px; font-weight: 800; color: ${camera.is_active ? '#10B981' : '#94A3B8'}">
+                                    ${camera.is_active ? 'KÍCH HOẠT' : 'TẠM TẮT'}
+                                </span>
+                                <label class="switch">
+                                    <input type="checkbox" data-action="toggle" data-feature="is_active" data-id="${camera.id}" ${camera.is_active ? "checked" : ""}>
+                                    <span class="slider"></span>
+                                </label>
+                             </div>
                         </div>
                     </div>
                 </article>

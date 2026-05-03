@@ -14,7 +14,7 @@ class JobUseCases:
         self.detection_service = detection_service
         self.file_storage = file_storage
         
-        self.executor = ThreadPoolExecutor(max_workers=1)
+        self.executor = ThreadPoolExecutor(max_workers=10)
         self.job_lock = threading.Lock()
         self.jobs: Dict[str, Job] = {}
         self.pause_events: Dict[str, threading.Event] = {}
@@ -28,6 +28,22 @@ class JobUseCases:
                 if hasattr(job, key):
                     setattr(job, key, value)
             return job
+
+    def stop_camera_jobs(self, camera_id: int):
+        """Dừng tất cả các job (nền hoặc test) liên quan đến camera_id này"""
+        with self.job_lock:
+            to_stop = []
+            for job_id, job in self.jobs.items():
+                if job.camera_id == camera_id and job.status in {"queued", "running"}:
+                    to_stop.append(job_id)
+            
+            for jid in to_stop:
+                job = self.jobs[jid]
+                job.status = "aborted"
+                job.message = "Đã dừng task do camera bị tắt."
+                if jid in self.pause_events:
+                    self.pause_events[jid].clear()
+                print(f"[System] Đã dừng job {jid} cho camera {camera_id}")
 
     def get_job(self, job_id: str) -> Optional[Job]:
         with self.job_lock:
@@ -211,6 +227,7 @@ class JobUseCases:
 
     def submit_job(self, job_id: str, input_stream: Any, input_path: Optional[str], input_ext: str, settings: Dict[str, Any], delete_after_job: bool = False) -> Job:
         submitted_at = time.time()
+        camera_id = settings.get("camera_id")
         job = self.set_job(
             job_id,
             status="queued",
@@ -220,6 +237,7 @@ class JobUseCases:
             summary=None,
             source_video=None,
             submitted_at=submitted_at,
+            camera_id=camera_id,
             progress={
                 "phase": "queued",
                 "processed_frames": 0,
@@ -277,6 +295,9 @@ class JobUseCases:
                         
                     print(f"[Startup] Đang khởi động giám sát nền cho camera: {cam.name} (ID: {cam.id})")
                     
+                    from database.sqlite_db import get_system_settings
+                    sys_settings = get_system_settings()
+                    
                     settings = {
                         "camera_id": cam.id,
                         "roi_points": cam.roi_points,
@@ -287,8 +308,8 @@ class JobUseCases:
                         "enable_illegal_parking": cam.enable_illegal_parking,
                         "enable_license_plate": cam.enable_license_plate,
                         "model_path": cam.model_path,
-                        "confidence_threshold": 0.25,
-                        "process_every_n_frames": 2
+                        "confidence_threshold": sys_settings.get("confidence", 0.32),
+                        "process_every_n_frames": sys_settings.get("frame_skip", 2)
                     }
                     
                     # Submit job

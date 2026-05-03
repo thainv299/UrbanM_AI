@@ -6,8 +6,7 @@
 <div class="page-head">
     <div>
         <p class="eyebrow">Giám sát Camera</p>
-        <h2 class="page-title">Xem Camera và Giám sát AI</h2>
-        <p class="muted">Chọn camera để bắt đầu giám sát trực tiếp.</p>
+        <h2 class="page-title">Hệ thống Giám sát Thông minh</h2>
     </div>
 </div>
 
@@ -17,8 +16,7 @@
         <div class="panel-header">
             <div>
                 <p class="eyebrow">Giám sát Tổng thể</p>
-                <h3>Danh sách Camera</h3>
-                <p class="muted small">Nhấn vào camera để bắt đầu giám sát.</p>
+                <h3>Danh sách Camera khả dụng</h3>
             </div>
             <button type="button" class="button secondary sm" id="cameras-refresh-grid">🔄 Làm mới danh sách</button>
         </div>
@@ -57,13 +55,19 @@
 
     <div style="display: grid; grid-template-columns: 3fr 1fr; gap: 24px;">
         <article class="panel" style="padding: 16px; background: #000; border-radius: 12px; overflow: hidden;">
-            <div id="stream-fullscreen-container" class="stream-fullscreen-container" style="position: relative;">
-                <img id="stream-output" class="preview-frame" alt="AI Analysis Stream"
-                    style="width: 100%; height: auto; max-height: 70vh; object-fit: contain; display: block; margin: 0 auto;">
-                <button type="button" id="fullscreen-exit-btn" class="fullscreen-exit-btn" title="Thoát (ESC)">
-                    ✕ Thoát
-                </button>
-            </div>
+                <div id="stream-viewer-wrapper" style="position: relative; width: 100%; height: auto; min-height: 400px; background: #000; display: flex; align-items: center; justify-content: center;">
+                    <img id="stream-output" class="preview-frame" alt="AI Analysis Stream"
+                        style="width: 100%; height: auto; max-height: 70vh; object-fit: contain; display: block; margin: 0 auto; z-index: 1;">
+                    
+                    <div id="stream-loader" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); z-index: 2; color: #fff;">
+                        <div class="loader-spinner" style="width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.1); border-top-color: var(--brand-blue, #2563eb); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px;"></div>
+                        <p id="stream-loader-text" style="margin: 0; font-weight: 500; font-size: 0.95rem;">Đang khởi tạo luồng dữ liệu AI...</p>
+                    </div>
+
+                    <button type="button" id="fullscreen-exit-btn" class="fullscreen-exit-btn" title="Thoát (ESC)">
+                        ✕ Thoát
+                    </button>
+                </div>
         </article>
 
         <aside style="display: flex; flex-direction: column; gap: 16px;">
