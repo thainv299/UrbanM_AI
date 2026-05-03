@@ -13,9 +13,14 @@ class SqliteCameraRepository(CameraRepository):
         if not raw_value:
             return None
         try:
-            points = json.loads(raw_value)
+            data = json.loads(raw_value)
         except json.JSONDecodeError:
             return None
+            
+        points = data
+        if isinstance(data, dict) and "points" in data:
+            points = data["points"]
+
         if not isinstance(points, list):
             return None
         normalized: List[List[int]] = []
@@ -42,6 +47,7 @@ class SqliteCameraRepository(CameraRepository):
             enable_illegal_parking=bool(row["bat_phat_hien_do_sai"]),
             enable_license_plate=bool(row["bat_phat_hien_bien_so"]),
             is_active=bool(row["trang_thai_hoat_dong"]),
+            model_path=row["mo_hinh_yolo"] or "",
             created_at=row["ngay_tao"],
             updated_at=row["ngay_cap_nhat"],
         )
@@ -103,9 +109,9 @@ class SqliteCameraRepository(CameraRepository):
                 """
                 INSERT INTO camera (
                     ten_camera, nguon_phat, mo_ta, toa_do_vung_chon, toa_do_cam_do,
-                    bat_phat_hien_un_tac, bat_phat_hien_do_sai, bat_phat_hien_bien_so, trang_thai_hoat_dong
+                    bat_phat_hien_un_tac, bat_phat_hien_do_sai, bat_phat_hien_bien_so, trang_thai_hoat_dong, mo_hinh_yolo
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     camera.name,
@@ -117,6 +123,7 @@ class SqliteCameraRepository(CameraRepository):
                     int(camera.enable_illegal_parking),
                     int(camera.enable_license_plate),
                     int(camera.is_active),
+                    camera.model_path,
                 ),
             )
             connection.commit()
@@ -158,6 +165,9 @@ class SqliteCameraRepository(CameraRepository):
         if camera.is_active is not None:
             assignments.append("trang_thai_hoat_dong = ?")
             values.append(int(camera.is_active))
+        if camera.model_path is not None:
+            assignments.append("mo_hinh_yolo = ?")
+            values.append(camera.model_path)
 
         if not assignments:
             return self.get_by_id(camera.id)
