@@ -14,7 +14,6 @@ def send_telegram_image(
     chat_id = (chat_id or os.getenv("TELEGRAM_CHAT_ID", "")).strip()
 
     if not bot_token or not chat_id:
-        print("Telegram chưa cấu hình bot_token/chat_id")
         return False
         
     url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
@@ -46,7 +45,6 @@ def send_telegram_video(
     chat_id = (chat_id or os.getenv("TELEGRAM_CHAT_ID", "")).strip()
 
     if not bot_token or not chat_id:
-        print("Telegram chưa cấu hình bot_token/chat_id")
         return False
 
     if not os.path.exists(video_path):
