@@ -193,14 +193,18 @@ async def api_list_server_videos(user=Depends(login_required)):
         SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
         
     videos = []
-    for ext in ALLOWED_VIDEO_EXTENSIONS:
-        for p in SAMPLES_DIR.glob(f"*{ext}"):
-            stats = p.stat()
-            videos.append({
-                "filename": p.name,
-                "size": stats.st_size,
-                "path": str(p)
-            })
+    if SAMPLES_DIR.exists():
+        for p in SAMPLES_DIR.iterdir():
+            if p.is_file() and p.suffix.lower() in ALLOWED_VIDEO_EXTENSIONS:
+                try:
+                    stats = p.stat()
+                    videos.append({
+                        "filename": p.name,
+                        "size": stats.st_size,
+                        "path": str(p)
+                    })
+                except Exception:
+                    continue
     
     # Sort by name
     videos.sort(key=lambda x: x["filename"])

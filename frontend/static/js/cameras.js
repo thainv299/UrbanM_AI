@@ -219,17 +219,17 @@ document.addEventListener("DOMContentLoaded", () => {
         
         try {
             const data = await window.portalApi.get("/api/server-videos");
-            if (data.ok && data.videos.length > 0) {
+            if (data.ok && data.videos && data.videos.length > 0) {
                 fields.serverFileList.innerHTML = data.videos.map(v => `
                     <div class="file-item" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-main);">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <span style="font-size: 1.2rem;">📹</span>
-                            <div>
-                                <div style="font-weight: 600; font-size: 0.9rem;">${v.filename}</div>
+                            <div style="overflow: hidden; text-overflow: ellipsis;">
+                                <div style="font-weight: 600; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 350px;" title="${v.filename}">${v.filename}</div>
                                 <div class="muted small">${(v.size / (1024 * 1024)).toFixed(1)} MB</div>
                             </div>
                         </div>
-                        <button type="button" class="button primary sm select-file-btn" data-path="${v.path}">Chọn file</button>
+                        <button type="button" class="button primary sm select-file-btn" data-path="${v.path}" style="flex-shrink: 0;">Chọn</button>
                     </div>
                 `).join("");
 
@@ -241,10 +241,22 @@ document.addEventListener("DOMContentLoaded", () => {
                     });
                 });
             } else {
-                fields.serverFileList.innerHTML = '<p class="muted center">Không có file video nào trong thư mục data/samples.</p>';
+                fields.serverFileList.innerHTML = `
+                    <div class="center" style="padding: 40px 20px;">
+                        <div style="font-size: 2rem; margin-bottom: 10px;">📂</div>
+                        <p class="muted">Không tìm thấy file video nào trong thư mục <code>data/samples</code>.</p>
+                        <p class="small muted">Hãy đảm bảo file có đuôi .mp4, .avi, .mkv...</p>
+                    </div>
+                `;
             }
         } catch (error) {
-            fields.serverFileList.innerHTML = `<p class="error center">Lỗi: ${error.message}</p>`;
+            console.error("Server Browser Error:", error);
+            fields.serverFileList.innerHTML = `
+                <div class="center error" style="padding: 40px 20px;">
+                    <p>Lỗi khi kết nối đến máy chủ:</p>
+                    <code style="display: block; margin-top: 10px; color: var(--text-error);">${error.message}</code>
+                </div>
+            `;
         }
     }
 

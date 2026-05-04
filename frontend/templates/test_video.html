@@ -45,17 +45,18 @@
         <div style="display: flex; gap: 8px;">
             <button type="button" class="button secondary sm" id="stop-test-job"
                 style="background-color: var(--color-error, #f44336); color: white; border-color: transparent;">
-                🛑 Dừng Giám sát
+                Dừng Giám sát
             </button>
             <button type="button" id="fullscreen-btn" class="button secondary sm" title="Toàn màn hình">
-                📺 Toàn màn hình
+                Toàn màn hình
             </button>
         </div>
     </div>
 
     <div style="display: flex; flex-direction: column; gap: 24px;">
         <!-- Video Display Area -->
-        <article class="panel" style="padding: 16px; background: #000; border-radius: 12px; overflow: hidden; width: 100%;">
+        <article class="panel"
+            style="padding: 16px; background: #000; border-radius: 12px; overflow: hidden; width: 100%;">
             <div id="stream-viewer-wrapper"
                 style="position: relative; width: 100%; height: auto; min-height: 400px; background: #000; display: flex; align-items: center; justify-content: center;">
                 <img id="stream-output" class="preview-frame" alt="AI Analysis Stream"
@@ -77,17 +78,21 @@
         </article>
 
         <!-- Information & Results Area below video -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border);">
+        <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border);">
             <div id="result-summary-container">
                 <p class="eyebrow">Kết quả Phân tích</p>
-                <div id="result-summary" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 12px;"></div>
+                <div id="result-summary"
+                    style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 12px;">
+                </div>
             </div>
-            
+
             <div id="job-info-container">
                 <p class="eyebrow">Trạng thái Hệ thống</p>
                 <div id="job-status-panel" style="margin-top: 12px;"></div>
                 <p id="stream-output-note" class="muted" style="margin-top: 12px; font-size: 0.9rem; font-weight: 500;">
-                    <span style="color: var(--success);">●</span> Hệ thống đang theo dõi và phân tích dữ liệu thời gian thực.
+                    <span style="color: var(--success);">●</span> Hệ thống đang theo dõi và phân tích dữ liệu thời gian
+                    thực.
                 </p>
             </div>
         </div>
@@ -131,5 +136,5 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/roi_tool.js') }}?v=2.0"></script>
-<script src="{{ url_for('static', filename='js/test_video.js') }}?v=4.1"></script>
+<script src="{{ url_for('static', filename='js/test_video.js') }}?v=4.2"></script>
 {% endblock %}
