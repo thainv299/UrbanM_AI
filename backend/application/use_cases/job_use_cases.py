@@ -14,7 +14,7 @@ class JobUseCases:
         self.detection_service = detection_service
         self.file_storage = file_storage
         
-        self.executor = ThreadPoolExecutor(max_workers=1)
+        self.executor = ThreadPoolExecutor(max_workers=10)
         self.job_lock = threading.Lock()
         self.jobs: Dict[str, Job] = {}
         self.pause_events: Dict[str, threading.Event] = {}
@@ -28,6 +28,22 @@ class JobUseCases:
                 if hasattr(job, key):
                     setattr(job, key, value)
             return job
+
+    def stop_camera_jobs(self, camera_id: int):
+        """Dừng tất cả các job (nền hoặc test) liên quan đến camera_id này"""
+        with self.job_lock:
+            to_stop = []
+            for job_id, job in self.jobs.items():
+                if job.camera_id == camera_id and job.status in {"queued", "running"}:
+                    to_stop.append(job_id)
+            
+            for jid in to_stop:
+                job = self.jobs[jid]
+                job.status = "aborted"
+                job.message = "Đã dừng task do camera bị tắt."
+                if jid in self.pause_events:
+                    self.pause_events[jid].clear()
+                print(f"[System] Đã dừng job {jid} cho camera {camera_id}")
 
     def get_job(self, job_id: str) -> Optional[Job]:
         with self.job_lock:
@@ -88,6 +104,7 @@ class JobUseCases:
         input_path: Optional[str],
         input_ext: str,
         detection_settings: Dict[str, Any],
+        delete_after_job: bool = False
     ) -> None:
         def handle_progress(progress: Dict[str, Any]) -> None:
             # Kiểm tra xem người dùng có đóng tab hay ngắt Stream chưa để dừng xử lý sớm
@@ -201,15 +218,16 @@ class JobUseCases:
             with self.job_lock:
                 self.pause_events.pop(job_id, None)
         finally:
-            if input_path:
+            if delete_after_job and input_path:
                 import os
                 try:
                     os.remove(input_path)
                 except Exception:
                     pass
 
-    def submit_job(self, job_id: str, input_stream: Any, input_path: Optional[str], input_ext: str, settings: Dict[str, Any]) -> Job:
+    def submit_job(self, job_id: str, input_stream: Any, input_path: Optional[str], input_ext: str, settings: Dict[str, Any], delete_after_job: bool = False) -> Job:
         submitted_at = time.time()
+        camera_id = settings.get("camera_id")
         job = self.set_job(
             job_id,
             status="queued",
@@ -219,6 +237,7 @@ class JobUseCases:
             summary=None,
             source_video=None,
             submitted_at=submitted_at,
+            camera_id=camera_id,
             progress={
                 "phase": "queued",
                 "processed_frames": 0,
@@ -236,6 +255,7 @@ class JobUseCases:
             input_path,
             input_ext,
             settings,
+            delete_after_job
         )
         return job
 
@@ -261,3 +281,58 @@ class JobUseCases:
                 if job and job.status in ("queued", "running"):
                     job.status = "aborted"
                     job.message = "Stream bị ngắt kết nối."
+    def start_active_cameras(self, camera_use_cases: Any):
+        """Khởi động tất cả các camera đang hoạt động (is_active=True)"""
+        try:
+            active_cameras = camera_use_cases.list_cameras()
+            for cam in active_cameras:
+                if cam.is_active:
+                    job_id = f"background_{cam.id}"
+                    # Kiểm tra xem job đã chạy chưa
+                    existing_job = self.get_job(job_id)
+                    if existing_job and existing_job.status in {"queued", "running"}:
+                        continue
+                        
+                    print(f"[Startup] Đang khởi động giám sát nền cho camera: {cam.name} (ID: {cam.id})")
+                    
+                    from database.sqlite_db import get_system_settings
+                    sys_settings = get_system_settings()
+                    
+                    settings = {
+                        "camera_id": cam.id,
+                        "roi_points": cam.roi_points,
+                        "roi_meta": cam.roi_meta,
+                        "no_parking_points": cam.no_parking_points,
+                        "no_park_meta": cam.no_park_meta,
+                        "enable_congestion": cam.enable_congestion,
+                        "enable_illegal_parking": cam.enable_illegal_parking,
+                        "enable_license_plate": cam.enable_license_plate,
+                        "model_path": cam.model_path,
+                        "confidence_threshold": sys_settings.get("confidence", 0.32),
+                        "process_every_n_frames": sys_settings.get("frame_skip", 2)
+                    }
+                    
+                    # Submit job
+                    self.submit_job(
+                        job_id=job_id,
+                        input_stream=None,
+                        input_path=cam.stream_source,
+                        input_ext=".mp4", # Giả định mặc định hoặc lấy từ path
+                        settings=settings
+                    )
+        except Exception as e:
+            print(f"[Startup] Lỗi khởi động camera nền: {e}")
+
+    def stop_all_jobs(self):
+        """Dừng tất cả các job đang chạy hoặc đang chờ"""
+        print("[System] Đang dừng tất cả các task xử lý camera...")
+        with self.job_lock:
+            for job_id, job in self.jobs.items():
+                if job.status in {"queued", "running"}:
+                    job.status = "aborted"
+                    job.message = "Đã dừng task do server tắt."
+                    if job_id in self.pause_events:
+                        self.pause_events[job_id].clear()
+        
+        # Shutdown executor
+        self.executor.shutdown(wait=False)

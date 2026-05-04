@@ -67,12 +67,7 @@ def create_app() -> FastAPI:
     app.add_middleware(SessionMiddleware, secret_key=str(SECRET_KEY))
 
     # Inject Template context (Global)
-    # FastAPI doesn't have a direct context processor, 
-    # but we can enhance the TemplateResponse call or the templates object itself.
-    # Here we add a global function to the templates environment.
     templates.env.globals["current_user_obj"] = lambda request: getattr(request.state, "current_user", None)
-    # Re-map url_for to be more compatible with legacy templates if needed, 
-    # but we already updated templates to use blueprint notation.
 
     # 4. Static Files — trỏ đến frontend/static/
     app.mount("/static", StaticFiles(directory=str(PROJECT_ROOT / "frontend" / "static")), name="static")

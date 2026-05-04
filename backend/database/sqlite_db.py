@@ -40,6 +40,7 @@ def init_db() -> None:
                 bat_phat_hien_do_sai INTEGER NOT NULL DEFAULT 1,
                 bat_phat_hien_bien_so INTEGER NOT NULL DEFAULT 1,
                 trang_thai_hoat_dong INTEGER NOT NULL DEFAULT 1,
+                mo_hinh_yolo TEXT,
                 ngay_tao TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 ngay_cap_nhat TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -113,6 +114,10 @@ def init_db() -> None:
         if "bat_phat_hien_bien_so" not in camera_columns:
             connection.execute(
                 "ALTER TABLE camera ADD COLUMN bat_phat_hien_bien_so INTEGER NOT NULL DEFAULT 1"
+            )
+        if "mo_hinh_yolo" not in camera_columns:
+            connection.execute(
+                "ALTER TABLE camera ADD COLUMN mo_hinh_yolo TEXT"
             )
 
         # Cột id_camera trong bảng biển số

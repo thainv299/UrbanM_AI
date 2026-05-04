@@ -180,6 +180,7 @@ def _load_model(model_path: Path) -> YOLO:
         return YOLO(model_str, task="detect")
 
     model = YOLO(model_str)
+    print(f"[AI Model] Model labels: {model.names}")
     preferred_device = os.environ.get("WEB_DETECT_DEVICE", "").strip()
     if preferred_device:
         try:
@@ -221,7 +222,7 @@ def process_video(
         raise FileNotFoundError(f"Không tìm thấy mô hình YOLO tại: {model_path}")
 
     # Các ngưỡng cấu hình
-    confidence_threshold = float(settings.get("confidence_threshold", 0.32))
+    confidence_threshold = float(settings.get("confidence_threshold", 0.25))
     enable_congestion = bool(settings.get("enable_congestion", True))
     enable_illegal_parking = bool(settings.get("enable_illegal_parking", True))
     enable_license_plate = bool(settings.get("enable_license_plate", True))
@@ -251,15 +252,16 @@ def process_video(
     f_scale, f_thick, f_offset = _get_drawing_params(frame_width)
 
     # Vùng ROI
+    raw_roi = settings.get("roi_points")
     roi_points = _normalize_points(
-        settings.get("roi_points"), frame_width, frame_height, settings.get("roi_meta")
+        raw_roi, frame_width, frame_height, settings.get("roi_meta")
     ) or _full_frame_polygon(frame_width, frame_height)
+    
+    roi_polygon = _to_polygon(roi_points)
     
     no_parking_points = _normalize_points(
         settings.get("no_parking_points"), frame_width, frame_height, settings.get("no_park_meta")
     )
-    
-    roi_polygon = _to_polygon(roi_points)
     
     if roi_polygon is None:
         raise ValueError("Vùng ROI không hợp lệ.")
@@ -370,7 +372,7 @@ def process_video(
                         "phase": "running_detection",
                         "processed_frames": frame_index,
                         "source_total_frames": total_frames,
-                        "progress_percent": round((frame_index / total_frames) * 100, 2) if total_frames else None,
+                        "progress_percent": None,
                         "elapsed_seconds": round(time.time() - started_at, 1),
                         "latest_status": "Đang tạm dừng...",
                         "preview_jpeg": _encode_preview_frame(p_frame),
@@ -381,7 +383,13 @@ def process_video(
             frame_start_time = time.time()
             success, frame = capture.read()
             if not success:
-                break
+                # Nếu là file video (total_frames > 0) thì quay lại từ đầu để lặp liên tục
+                if total_frames > 0:
+                    capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    success, frame = capture.read()
+                    if not success: break
+                else:
+                    break
 
             clean_frame = frame.copy()
             if enable_illegal_parking:
@@ -427,7 +435,9 @@ def process_video(
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
                     center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
 
-                    if cv2.pointPolygonTest(roi_polygon, (center_x, center_y), False) < 0:
+                    in_roi = cv2.pointPolygonTest(roi_polygon, (center_x, center_y), False) >= 0
+                    
+                    if not in_roi:
                         continue
 
                     # Lọc nhiễu: Bỏ qua Bounding Box lớn bất thường (> 30% diện tích ROI)
@@ -571,7 +581,7 @@ def process_video(
                     "phase": "running_detection",
                     "processed_frames": frame_index,
                     "source_total_frames": total_frames,
-                    "progress_percent": round((frame_index / total_frames) * 100, 2) if total_frames else None,
+                    "progress_percent": None,
                     "elapsed_seconds": round(time.time() - started_at, 1),
                     "latest_status": latest_status,
                     "preview_jpeg": preview_state["last_jpeg"],

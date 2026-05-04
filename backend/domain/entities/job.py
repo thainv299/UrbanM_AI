@@ -17,6 +17,7 @@ class Job:
     progress: Dict[str, Any] = field(default_factory=dict)
     latest_frame: Optional[bytes] = None
     is_paused: bool = False
+    camera_id: Optional[int] = None
 
     def to_dict(self) -> dict:
         return {
@@ -32,4 +33,5 @@ class Job:
             "summary": self.summary,
             "progress": self.progress,
             "is_paused": self.is_paused,
+            "camera_id": self.camera_id,
         }

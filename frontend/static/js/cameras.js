@@ -1,13 +1,12 @@
 document.addEventListener("DOMContentLoaded", () => {
     const tableBody = document.getElementById("cameras-table-body");
-    const previewGrid = document.getElementById("camera-preview-grid");
     const form = document.getElementById("camera-form");
     const feedback = document.getElementById("cameras-feedback");
     const refreshButton = document.getElementById("cameras-refresh");
     const resetButton = document.getElementById("camera-form-reset");
     const formTitle = document.getElementById("camera-form-title");
 
-    if (!tableBody || !previewGrid || !form) {
+    if (!tableBody || !form) {
         return;
     }
 
@@ -16,6 +15,10 @@ document.addEventListener("DOMContentLoaded", () => {
         name: document.getElementById("camera_name"),
         streamSource: document.getElementById("stream_source"),
         description: document.getElementById("description"),
+        modelPath: document.getElementById("model_path"),
+        enableSimulation: document.getElementById("enable_simulation"),
+        simulationVideoFile: document.getElementById("simulation_video_file"),
+        simulationVideoStatus: document.getElementById("simulation_video_status"),
         roiPoints: document.getElementById("roi_points"),
         noParkingPoints: document.getElementById("no_parking_points"),
         roiFilePicker: document.getElementById("roi_file_picker"),
@@ -30,159 +33,217 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const state = {
         cameras: [],
-        refreshTimer: null,
     };
 
+    let currentEditingCameraId = null;
+    let firstFrameDataUrl = null;
+
     function setForm(camera = null) {
-        fields.id.value = camera?.id || "";
+        currentEditingCameraId = camera !== null ? camera.id : null;
+        fields.id.value = camera !== null ? camera.id : "";
         fields.name.value = camera?.name || "";
         fields.streamSource.value = camera?.stream_source || "";
         fields.description.value = camera?.description || "";
         
-        fields.roiPoints.value = camera?.roi_points ? JSON.stringify(camera.roi_points) : "";
+        if (camera?.model_path) {
+            fields.modelPath.value = camera.model_path;
+        } else {
+            // Default select first or standard
+            if (fields.modelPath.options.length > 0) fields.modelPath.selectedIndex = 0;
+        }
+
+        fields.simulationVideoFile.value = "";
+        fields.simulationVideoStatus.textContent = camera?.stream_source ? `Nguồn hiện tại: ${camera.stream_source}` : "Chưa chọn video giả lập.";
+        fields.simulationVideoStatus.style.color = "var(--text-muted)";
+        
+        firstFrameDataUrl = null;
+
+        if (camera?.roi_points) {
+            const roiData = { points: camera.roi_points, ...(camera.roi_meta || {}) };
+            fields.roiPoints.value = JSON.stringify(roiData);
+        } else {
+            fields.roiPoints.value = "";
+        }
         fields.roiFilePicker.value = "";
         fields.roiStatus.textContent = camera?.roi_points ? "Đã có dữ liệu từ trước." : "Chưa có dữ liệu.";
         
-        fields.noParkingPoints.value = camera?.no_parking_points ? JSON.stringify(camera.no_parking_points) : "";
+        if (camera?.no_parking_points) {
+            const npData = { points: camera.no_parking_points, ...(camera.no_park_meta || {}) };
+            fields.noParkingPoints.value = JSON.stringify(npData);
+        } else {
+            fields.noParkingPoints.value = "";
+        }
         fields.noParkingFilePicker.value = "";
-        fields.noParkingStatus.textContent = camera?.no_parking_points ? "Đã có dữ liệu từ trước." : "Chưa có dữ liệu.";
+        fields.noParkingStatus.textContent = camera?.no_parking_points ? "Đã có dữ liệu từ trước." : "Chưa có vùng cấm đỗ.";
 
         fields.enableCongestion.checked = camera ? Boolean(camera.enable_congestion) : true;
         fields.enableIllegalParking.checked = camera ? Boolean(camera.enable_illegal_parking) : true;
         fields.enableLicensePlate.checked = camera ? Boolean(camera.enable_license_plate) : true;
         fields.isActive.checked = camera ? Boolean(camera.is_active) : true;
+
+        fields.enableSimulation.checked = camera ? Boolean(camera.enable_simulation) : false;
+        updateSimulationLayout();
+
         formTitle.textContent = camera ? `Cập nhật camera #${camera.id}` : "Thêm camera mới";
     }
+
+    function updateSimulationLayout() {
+        const simulationField = document.querySelector(".simulation-field");
+        if (!simulationField) return;
+        
+        const isSim = fields.enableSimulation.checked;
+        simulationField.style.display = isSim ? "block" : "none";
+        
+        // If simulation is on, the stream source is handled by the file picker
+        // We can hide the text input or make it read-only
+        if (isSim) {
+            fields.streamSource.closest("label").style.display = "none";
+            if (fields.streamSource.value && (fields.streamSource.value.includes("\\") || fields.streamSource.value.includes("/"))) {
+                const parts = fields.streamSource.value.split(/[\\\/]/);
+                fields.simulationVideoStatus.textContent = `Nguồn hiện tại: ${parts[parts.length - 1]}`;
+            }
+        } else {
+            fields.streamSource.closest("label").style.display = "block";
+        }
+
+        if (!isSim) {
+            fields.simulationVideoStatus.textContent = "Chế độ giả lập tắt.";
+        }
+    }
+
+    // Fix Simulation Video Selection Display
+    if (fields.simulationVideoFile) {
+        fields.simulationVideoFile.addEventListener("change", (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                fields.simulationVideoStatus.textContent = `Sẵn sàng tải lên: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
+                fields.simulationVideoStatus.style.color = "var(--color-primary, teal)";
+                firstFrameDataUrl = null; // Clear old preview
+            }
+        });
+    }
+
+    // ── ROI FRAME EXTRACTION (Using robust method from test_video) ──
+    async function getSnapshotFromCamera(cameraId) {
+        try {
+            const response = await fetch(`/api/cameras/${cameraId}/snapshot?ts=${Date.now()}`);
+            if (!response.ok) throw new Error("Không thể lấy snapshot từ camera.");
+            const blob = await response.blob();
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) {
+            console.error(error);
+            return null;
+        }
+    }
+
+    async function extractFrameLocally(file) {
+        return new Promise((resolve, reject) => {
+            const videoURL = URL.createObjectURL(file);
+            const video = document.createElement("video");
+            video.muted = true;
+            video.playsInline = true;
+            video.preload = "metadata";
+            video.src = videoURL;
+
+            let timeoutId = setTimeout(() => {
+                cleanup();
+                reject(new Error("Timeout khi trích xuất frame"));
+            }, 8000);
+
+            const cleanup = () => {
+                clearTimeout(timeoutId);
+                video.pause();
+                video.src = "";
+                URL.revokeObjectURL(videoURL);
+            };
+
+            video.addEventListener("loadeddata", () => {
+                video.currentTime = 0.5;
+            });
+
+            video.addEventListener("seeked", () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+                cleanup();
+                resolve(dataUrl);
+            });
+
+            video.load();
+        });
+    }
+
+    document.querySelectorAll(".roi-draw-btn").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+            e.preventDefault();
+            const targetId = btn.dataset.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = "Đang lấy frame...";
+
+            try {
+                // Determine source for frame
+                if (fields.enableSimulation.checked && fields.simulationVideoFile.files.length > 0) {
+                    const file = fields.simulationVideoFile.files[0];
+                    if (!firstFrameDataUrl) {
+                        firstFrameDataUrl = await extractFrameLocally(file);
+                    }
+                } else if (currentEditingCameraId) {
+                    // Try to get live snapshot
+                    firstFrameDataUrl = await getSnapshotFromCamera(currentEditingCameraId);
+                }
+
+                if (!firstFrameDataUrl) {
+                    throw new Error("Không thể trích xuất ảnh nền. Hãy chọn file video hoặc lưu camera để lấy ảnh từ luồng trực tiếp.");
+                }
+
+                if (window.roiDrawingTool) {
+                    window.roiDrawingTool.openModal(targetId, firstFrameDataUrl);
+                }
+            } catch (err) {
+                alert("Lỗi: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        });
+    });
 
     function handleFileSelect(fileInput, hiddenInput, statusSpan) {
         fileInput.addEventListener("change", (event) => {
             const file = event.target.files[0];
-            if (!file) {
-                hiddenInput.value = "";
-                statusSpan.textContent = "Chưa có dữ liệu.";
-                return;
-            }
+            if (!file) return;
             const reader = new FileReader();
             reader.onload = (e) => {
                 try {
                     let parsed = JSON.parse(e.target.result);
-                    
-                    // Support layout JSON format from main.py {"points": [...]}
-                    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && Array.isArray(parsed.points)) {
-                        parsed = parsed.points;
-                    }
-
-                    if (!Array.isArray(parsed) || parsed.length < 3) {
-                        throw new Error("Dữ liệu JSON phải là mảng tọa độ chứa ít nhất 3 điểm.");
-                    }
+                    if (parsed && parsed.points) parsed = parsed.points;
+                    if (!Array.isArray(parsed)) throw new Error("JSON không hợp lệ");
                     hiddenInput.value = JSON.stringify(parsed);
                     statusSpan.textContent = "Đã tải file thành công.";
-                    statusSpan.style.color = "var(--color-primary, teal)";
                 } catch (error) {
-                    fileInput.value = "";
-                    hiddenInput.value = "";
-                    statusSpan.textContent = "Lỗi file không đúng chuẩn JSON Polygon.";
-                    statusSpan.style.color = "var(--color-danger, red)";
+                    alert("Lỗi file JSON");
                 }
             };
             reader.readAsText(file);
         });
     }
 
-    if (fields.roiFilePicker && fields.roiPoints && fields.roiStatus) {
-        handleFileSelect(fields.roiFilePicker, fields.roiPoints, fields.roiStatus);
-    }
-    if (fields.noParkingFilePicker && fields.noParkingPoints && fields.noParkingStatus) {
-        handleFileSelect(fields.noParkingFilePicker, fields.noParkingPoints, fields.noParkingStatus);
-    }
+    if (fields.roiFilePicker) handleFileSelect(fields.roiFilePicker, fields.roiPoints, fields.roiStatus);
+    if (fields.noParkingFilePicker) handleFileSelect(fields.noParkingFilePicker, fields.noParkingPoints, fields.noParkingStatus);
 
-
-    function formatDetection(camera) {
-        return `
-            <div class="pill-row" style="display: flex; flex-wrap: wrap; gap: 8px;">
-                <span class="pill ${camera.enable_congestion ? "teal" : "gray"}">Tắc nghẽn ${window.portalApi.pillText(camera.enable_congestion, "BẬT", "TẮT")}</span>
-                <span class="pill ${camera.enable_illegal_parking ? "orange" : "gray"}">Đỗ sai ${window.portalApi.pillText(camera.enable_illegal_parking, "BẬT", "TẮT")}</span>
-                <span class="pill ${camera.enable_license_plate ? "teal" : "gray"}">Biển số ${window.portalApi.pillText(camera.enable_license_plate, "BẬT", "TẮT")}</span>
-            </div>
-        `;
-    }
-
-    function renderTable() {
-        if (!state.cameras.length) {
-            tableBody.innerHTML = `
-                <tr>
-                    <td colspan="5">
-                        <div class="empty-state centered-panel">
-                            <div>
-                                <h3 class="muted">Chưa có camera nào</h3>
-                                <p class="muted">Thêm camera để hiển thị preview và cấu hình phát hiện.</p>
-                            </div>
-                        </div>
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        tableBody.innerHTML = state.cameras.map((camera) => `
-            <tr>
-                <td><strong>${camera.name}</strong></td>
-                <td><code class="small">${camera.stream_source || "Chưa có nguồn"}</code></td>
-                <td>${formatDetection(camera)}</td>
-                <td><span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "Hoạt động" : "Ngoại tuyến"}</span></td>
-                <td>
-                    <div class="button-row" style="display: flex; gap: 8px;">
-                        <button class="button secondary tiny" data-action="edit" data-id="${camera.id}">Sửa</button>
-                        <button class="button danger tiny" data-action="delete" data-id="${camera.id}" style="background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2);">Xóa</button>
-                    </div>
-                </td>
-            </tr>
-        `).join("");
-    }
-
-    function renderPreviewGrid() {
-        if (!state.cameras.length) {
-            previewGrid.innerHTML = `
-                <div class="empty-state panel full-span centered-panel">
-                    <div>
-                        <h3 class="muted">Chưa có camera để hiển thị</h3>
-                        <p class="muted">Sau khi thêm camera, ảnh preview sẽ được làm mới tự động.</p>
-                    </div>
-                </div>
-            `;
-            return;
-        }
-
-        previewGrid.innerHTML = state.cameras.map((camera) => `
-            <article class="camera-preview-card">
-                <div class="preview-container" style="position: relative;">
-                    <img
-                        src="/api/cameras/${camera.id}/snapshot?ts=${Date.now()}"
-                        alt="Preview ${camera.name}"
-                        class="camera-preview-image"
-                        data-camera-id="${camera.id}"
-                    >
-                    <div class="status-overlay" style="position: absolute; top: 12px; right: 12px;">
-                        <span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "LIVE" : "OFFLINE"}</span>
-                    </div>
-                </div>
-                <div class="camera-body">
-                    <div class="camera-mini-head">
-                        <h3>${camera.name}</h3>
-                    </div>
-                    <p class="muted small" style="margin-bottom: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Source: ${camera.stream_source || "Chưa cấu hình"}</p>
-                    
-                    ${formatDetection(camera)}
-                    
-                    <div class="preview-actions" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px;">
-                        <button class="button secondary tiny" data-action="toggle-congestion" data-id="${camera.id}">Tắc nghẽn</button>
-                        <button class="button secondary tiny" data-action="toggle-parking" data-id="${camera.id}">Đỗ sai</button>
-                        <button class="button secondary tiny" data-action="toggle-license-plate" data-id="${camera.id}">Biển số</button>
-                        <button class="button secondary tiny" data-action="toggle-active" data-id="${camera.id}">Bật/Tắt Cam</button>
-                    </div>
-                </div>
-            </article>
-        `).join("");
+    if (fields.enableSimulation) {
+        fields.enableSimulation.addEventListener("change", () => {
+            updateSimulationLayout();
+            firstFrameDataUrl = null;
+        });
     }
 
     async function loadCameras() {
@@ -190,38 +251,83 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await window.portalApi.get("/api/cameras");
             state.cameras = data.cameras || [];
             renderTable();
-            renderPreviewGrid();
         } catch (error) {
             window.portalApi.showNotice(feedback, error.message, "error");
         }
     }
 
-    function buildPayloadFromForm() {
-        return {
-            name: fields.name.value.trim(),
-            stream_source: fields.streamSource.value.trim(),
-            description: fields.description.value.trim(),
-            roi_points: fields.roiPoints.value.trim(),
-            no_parking_points: fields.noParkingPoints.value.trim(),
-            enable_congestion: fields.enableCongestion.checked,
-            enable_illegal_parking: fields.enableIllegalParking.checked,
-            enable_license_plate: fields.enableLicensePlate.checked,
-            is_active: fields.isActive.checked,
-        };
+    function renderTable() {
+        if (!state.cameras.length) {
+            tableBody.innerHTML = `<tr><td colspan="5"><div class="empty-state">Chưa có camera nào.</div></td></tr>`;
+            return;
+        }
+
+        tableBody.innerHTML = state.cameras.map((camera) => `
+            <tr>
+                <td><strong>${camera.name}</strong></td>
+                <td><code class="small">${camera.stream_source || "Chưa có nguồn"}</code></td>
+                <td>
+                    <div class="pill-row">
+                        <span class="pill ${camera.enable_congestion ? "teal" : "gray"}">Tắc nghẽn</span>
+                        <span class="pill ${camera.enable_illegal_parking ? "orange" : "gray"}">Đỗ sai</span>
+                        <span class="pill ${camera.enable_license_plate ? "teal" : "gray"}">Biển số</span>
+                    </div>
+                </td>
+                <td><span class="badge ${camera.is_active ? "success" : "muted"}">${camera.is_active ? "Hoạt động" : "Tắt"}</span></td>
+                <td>
+                    <div class="button-row">
+                        <button class="button secondary tiny" data-action="edit" data-id="${camera.id}">Sửa</button>
+                        <button class="button danger tiny" data-action="delete" data-id="${camera.id}">Xóa</button>
+                    </div>
+                </td>
+            </tr>
+        `).join("");
     }
 
     async function saveCamera(event) {
         event.preventDefault();
-        const payload = buildPayloadFromForm();
-        const editingId = Number(fields.id.value || 0);
+        const payload = {
+            name: fields.name.value.trim(),
+            stream_source: fields.streamSource.value.trim(),
+            description: fields.description.value.trim(),
+            model_path: fields.modelPath.value,
+            roi_points: fields.roiPoints.value.trim(),
+            no_parking_points: fields.noParkingPoints.value.trim(),
+            enable_congestion: fields.enableCongestion.checked,
+            enable_simulation: fields.enableSimulation.checked,
+            enable_illegal_parking: fields.enableIllegalParking.checked,
+            enable_license_plate: fields.enableLicensePlate.checked,
+            is_active: fields.isActive.checked,
+        };
+        const isEditing = fields.id.value !== "";
+        const editingId = isEditing ? Number(fields.id.value) : null;
 
         try {
-            if (editingId) {
+            // Upload simulation video if selected
+            if (fields.enableSimulation.checked && fields.simulationVideoFile.files.length > 0) {
+                const file = fields.simulationVideoFile.files[0];
+                const fd = new FormData();
+                fd.append('video_file', file);
+                
+                fields.simulationVideoStatus.textContent = "Đang tải video lên...";
+                const uploadResult = await window.portalApi.submitFormChunked('/api/cameras/upload-source', fd, (percent) => {
+                    fields.simulationVideoStatus.textContent = `Đang tải lên: ${percent}%`;
+                });
+                
+                if (uploadResult && uploadResult.ok && uploadResult.path) {
+                    payload.stream_source = uploadResult.path;
+                    fields.simulationVideoStatus.textContent = "Tải lên hoàn tất.";
+                } else {
+                    throw new Error("Lỗi tải video giả lập.");
+                }
+            }
+
+            if (isEditing) {
                 await window.portalApi.put(`/api/cameras/${editingId}`, payload);
-                window.portalApi.showNotice(feedback, "Da cap nhat camera.", "success");
+                window.portalApi.showNotice(feedback, "Đã cập nhật camera.", "success");
             } else {
                 await window.portalApi.post("/api/cameras", payload);
-                window.portalApi.showNotice(feedback, "Da them camera moi.", "success");
+                window.portalApi.showNotice(feedback, "Đã thêm camera mới.", "success");
             }
             setForm();
             await loadCameras();
@@ -230,59 +336,23 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    async function updateCameraFlags(cameraId, updates) {
-        const camera = state.cameras.find((item) => item.id === cameraId);
-        if (!camera) {
-            return;
-        }
-        const payload = {
-            name: camera.name,
-            stream_source: camera.stream_source,
-            description: camera.description,
-            roi_points: camera.roi_points,
-            no_parking_points: camera.no_parking_points,
-            enable_congestion: camera.enable_congestion,
-            enable_illegal_parking: camera.enable_illegal_parking,
-            enable_license_plate: camera.enable_license_plate,
-            is_active: camera.is_active,
-            ...updates,
-        };
-        try {
-            await window.portalApi.put(`/api/cameras/${cameraId}`, payload);
-            await loadCameras();
-        } catch (error) {
-            window.portalApi.showNotice(feedback, error.message, "error");
-        }
-    }
-
     tableBody.addEventListener("click", async (event) => {
         const button = event.target.closest("button[data-action]");
-        if (!button) {
-            return;
-        }
-
+        if (!button) return;
         const cameraId = Number(button.dataset.id);
         const camera = state.cameras.find((item) => item.id === cameraId);
-        if (!camera) {
-            return;
-        }
+        if (!camera) return;
 
         if (button.dataset.action === "edit") {
             setForm(camera);
-            window.portalApi.showNotice(feedback, `Dang chinh sua camera ${camera.name}.`, "info");
             return;
         }
 
         if (button.dataset.action === "delete") {
-            if (!window.confirm(`Xoa camera ${camera.name}?`)) {
-                return;
-            }
+            if (!confirm(`Xóa camera ${camera.name}?`)) return;
             try {
                 await window.portalApi.delete(`/api/cameras/${cameraId}`);
-                if (Number(fields.id.value || 0) === cameraId) {
-                    setForm();
-                }
-                window.portalApi.showNotice(feedback, "Da xoa camera.", "success");
+                setForm();
                 await loadCameras();
             } catch (error) {
                 window.portalApi.showNotice(feedback, error.message, "error");
@@ -290,48 +360,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    previewGrid.addEventListener("click", async (event) => {
-        const button = event.target.closest("button[data-action]");
-        if (!button) {
-            return;
-        }
-
-        const cameraId = Number(button.dataset.id);
-        const camera = state.cameras.find((item) => item.id === cameraId);
-        if (!camera) {
-            return;
-        }
-
-        if (button.dataset.action === "toggle-congestion") {
-            await updateCameraFlags(cameraId, { enable_congestion: !camera.enable_congestion });
-        }
-        if (button.dataset.action === "toggle-parking") {
-            await updateCameraFlags(cameraId, { enable_illegal_parking: !camera.enable_illegal_parking });
-        }
-        if (button.dataset.action === "toggle-license-plate") {
-            await updateCameraFlags(cameraId, { enable_license_plate: !camera.enable_license_plate });
-        }
-        if (button.dataset.action === "toggle-active") {
-            await updateCameraFlags(cameraId, { is_active: !camera.is_active });
-        }
-    });
-
-    resetButton.addEventListener("click", () => {
-        setForm();
-        window.portalApi.showNotice(feedback, "", "info");
-    });
-
-    refreshButton.addEventListener("click", loadCameras);
+    resetButton.addEventListener("click", () => setForm());
     form.addEventListener("submit", saveCamera);
 
-    function refreshSnapshots() {
-        previewGrid.querySelectorAll("img[data-camera-id]").forEach((image) => {
-            const cameraId = image.dataset.cameraId;
-            image.src = `/api/cameras/${cameraId}/snapshot?ts=${Date.now()}`;
-        });
-    }
-
-    state.refreshTimer = window.setInterval(refreshSnapshots, 5000);
     setForm();
     loadCameras();
 });

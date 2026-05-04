@@ -1,9 +1,12 @@
 import cv2
-from fastapi import APIRouter, Request, Depends, status
+import uuid
+from pathlib import Path
+from fastapi import APIRouter, Request, Depends, status, File, UploadFile, Form
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from typing import Any, Dict, Optional
 import io
 
+from core.config import ALLOWED_VIDEO_EXTENSIONS, INPUTS_DIR, PROJECT_ROOT, DEFAULT_MODEL_PATH
 from core.errors import AppError, NotFoundError
 from presentation.container import container, templates
 from presentation.middlewares.auth import login_required
@@ -15,7 +18,25 @@ camera_router = APIRouter()
 async def cameras_page(request: Request, user=Depends(login_required)):
     if isinstance(user, RedirectResponse):
         return user
-    return container.render_template(request, "cameras.html", {"page": "cameras"})
+    
+    # Scan models
+    models_dir = PROJECT_ROOT / "models"
+    available_models = []
+    if models_dir.exists():
+        for f in models_dir.iterdir():
+            if f.is_file() and f.suffix.lower() in [".pt", ".engine"]:
+                available_models.append(f.name)
+    available_models.sort()
+
+    return container.render_template(
+        request, 
+        "cameras.html", 
+        {
+            "page": "cameras", 
+            "available_models": available_models,
+            "default_model_path": str(DEFAULT_MODEL_PATH)
+        }
+    )
 
 
 @camera_router.get("/api/cameras")
@@ -24,6 +45,66 @@ async def api_list_cameras(user=Depends(login_required)):
         return user
     cameras = container.camera_use_cases.list_cameras()
     return {"ok": True, "cameras": [c.to_dict() for c in cameras]}
+
+
+@camera_router.get("/api/cameras/{camera_id}")
+async def api_get_camera(camera_id: int, user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+    try:
+        camera = container.camera_use_cases.get_camera(camera_id)
+        return {"ok": True, "camera": camera.to_dict()}
+    except NotFoundError:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "Camera không tồn tại."})
+
+
+@camera_router.post("/api/cameras/upload-source")
+async def api_upload_camera_source(
+    video_file: Optional[UploadFile] = File(None),
+    upload_id: Optional[str] = Form(None),
+    original_filename: Optional[str] = Form(None),
+    user=Depends(login_required)
+):
+    if isinstance(user, RedirectResponse):
+        return user
+
+    import os
+    import tempfile
+    
+    INPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    
+    if upload_id:
+        # Handle chunked upload completion
+        temp_dir = Path(tempfile.gettempdir()) / "video_uploads"
+        temp_file = temp_dir / f"{upload_id}.part"
+        if not temp_file.exists():
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Không tìm thấy dữ liệu upload."})
+        
+        filename = original_filename or "video.mp4"
+        suffix = Path(filename).suffix.lower()
+        target_path = INPUTS_DIR / f"{uuid.uuid4().hex}{suffix}"
+        
+        # Move file from temp to inputs
+        import shutil
+        shutil.move(str(temp_file), str(target_path))
+        
+    elif video_file and video_file.filename:
+        # Handle direct upload
+        suffix = Path(video_file.filename).suffix.lower()
+        if suffix not in ALLOWED_VIDEO_EXTENSIONS:
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Định dạng video không được hỗ trợ."})
+            
+        target_path = INPUTS_DIR / f"{uuid.uuid4().hex}{suffix}"
+        try:
+            content = await video_file.read()
+            with target_path.open("wb") as handle:
+                handle.write(content)
+        except Exception:
+            return JSONResponse(status_code=500, content={"ok": False, "error": "Không thể lưu file video."})
+    else:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "Không có file nào được gửi."})
+
+    return {"ok": True, "path": str(target_path.resolve())}
 
 
 @camera_router.post("/api/cameras")
@@ -44,7 +125,18 @@ async def api_update_camera(camera_id: int, payload: Dict[str, Any], user=Depend
     if isinstance(user, RedirectResponse):
         return user
     try:
+        # Kiểm tra trạng thái is_active trước và sau khi update
+        is_active_requested = payload.get("is_active")
+        
         updated = container.camera_use_cases.update_camera(camera_id, payload)
+        
+        # Đồng bộ luồng AI nền
+        if is_active_requested is False:
+            container.job_use_cases.stop_camera_jobs(camera_id)
+        elif is_active_requested is True:
+            # Khởi động lại nếu chưa chạy
+            container.job_use_cases.start_active_cameras(container.camera_use_cases)
+            
         return {"ok": True, "camera": updated.to_dict()}
     except AppError as exc:
         return JSONResponse(status_code=exc.status_code, content={"ok": False, "error": exc.message})
@@ -58,6 +150,8 @@ async def api_delete_camera(camera_id: int, user=Depends(login_required)):
         return user
     try:
         container.camera_use_cases.delete_camera(camera_id)
+        # Dừng toàn bộ luồng AI liên quan (nền + test)
+        container.job_use_cases.stop_camera_jobs(camera_id)
         return {"ok": True}
     except AppError as exc:
         return JSONResponse(status_code=exc.status_code, content={"ok": False, "error": exc.message})

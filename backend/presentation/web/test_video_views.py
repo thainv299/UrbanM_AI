@@ -53,7 +53,14 @@ def _parse_polygon(value: Any) -> Optional[list]:
 
 
 def _build_test_settings(form_data: Dict[str, Any], camera: Any) -> Dict[str, Any]:
-    model_path_text = str(form_data.get("model_path", "")).strip() or str(DEFAULT_MODEL_PATH)
+    model_path_text = str(form_data.get("model_path", "")).strip()
+    
+    if not model_path_text and camera and camera.model_path:
+        model_path_text = camera.model_path
+        
+    if not model_path_text:
+        model_path_text = str(DEFAULT_MODEL_PATH)
+
     model_path = resolve_path(model_path_text)
     if not model_path.exists():
         raise ValidationError(f"Không tìm thấy model: {model_path}")
@@ -74,8 +81,10 @@ def _build_test_settings(form_data: Dict[str, Any], camera: Any) -> Dict[str, An
     if camera is not None:
         if roi_points is None:
             roi_points = camera.roi_points
+            roi_meta = camera.roi_meta or {}
         if no_parking_points is None:
             no_parking_points = camera.no_parking_points
+            no_park_meta = camera.no_park_meta or {}
 
     enable_congestion = True
     if "enable_congestion" in form_data:
@@ -107,15 +116,18 @@ def _build_test_settings(form_data: Dict[str, Any], camera: Any) -> Dict[str, An
             return int(val) if val not in (None, "") else d
         except: return d
 
+    from database.sqlite_db import get_system_settings
+    sys_settings = get_system_settings()
+
     return {
         "model_path": str(model_path),
-        "confidence_threshold": _parse_float(form_data.get("confidence_threshold"), 0.32),
+        "confidence_threshold": _parse_float(form_data.get("confidence_threshold"), sys_settings.get("confidence", 0.32)),
         "enable_congestion": enable_congestion,
         "enable_illegal_parking": enable_illegal_parking,
         "enable_license_plate": enable_license_plate,
         "stop_seconds": _parse_float(form_data.get("stop_seconds"), 30.0),
         "parking_move_threshold_px": _parse_float(form_data.get("parking_move_threshold_px"), 10.0),
-        "process_every_n_frames": _parse_int(form_data.get("process_every_n_frames"), 2),
+        "process_every_n_frames": _parse_int(form_data.get("process_every_n_frames"), sys_settings.get("frame_skip", 2)),
         "roi_points": roi_points,
         "roi_meta": roi_meta,
         "no_parking_points": no_parking_points,
@@ -197,17 +209,21 @@ async def api_create_test_job(
     job_id = uuid.uuid4().hex
     camera = None
     camera_id_strip = (camera_id or "").strip()
-    if camera_id_strip:
-        try:
-            camera = container.camera_use_cases.get_camera(int(camera_id_strip))
-        except NotFoundError:
-            return JSONResponse(status_code=404, content={"ok": False, "error": "Camera được chọn không tồn tại."})
+    if not camera_id_strip:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "Vui lòng chọn một camera để giám sát."})
+
+    try:
+        camera = container.camera_use_cases.get_camera(int(camera_id_strip))
+    except NotFoundError:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "Camera được chọn không tồn tại."})
 
     input_stream = None
     input_path = None
     input_ext = ""
     
+    # ── XỬ LÝ NGUỒN ĐẦU VÀO ──
     if upload_id:
+        # Chế độ Giả lập (Chunked upload)
         import tempfile
         import os
         temp_dir = Path(tempfile.gettempdir()) / "video_uploads"
@@ -216,18 +232,23 @@ async def api_create_test_job(
             return JSONResponse(status_code=400, content={"ok": False, "error": "Không tìm thấy dữ liệu upload."})
         input_path = str(file_path)
         filename = original_filename or "video.mp4"
-        if not container.file_storage.is_allowed_video(filename):
-            try: os.remove(file_path)
-            except: pass
-            return JSONResponse(status_code=400, content={"ok": False, "error": "Định dạng video không được hỗ trợ."})
         input_ext = Path(filename).suffix.lower()
     elif video_file and video_file.filename:
+        # Chế độ Giả lập (Direct upload)
         if not container.file_storage.is_allowed_video(video_file.filename):
             return JSONResponse(status_code=400, content={"ok": False, "error": "Định dạng video không được hỗ trợ."})
         input_ext = Path(video_file.filename).suffix.lower()
         input_stream = io.BytesIO(await video_file.read())
     else:
-        return JSONResponse(status_code=400, content={"ok": False, "error": "Hãy chọn tệp video để tải lên."})
+        # Chế độ Giám sát Trực tiếp (Dùng stream_source từ DB)
+        if not camera.stream_source:
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Camera này chưa cấu hình nguồn phát."})
+        input_path = camera.stream_source
+        # Thử đoán extension nếu là file, hoặc mặc định .mp4 cho RTSP
+        if "." in input_path.split("/")[-1]:
+            input_ext = "." + input_path.split(".")[-1].split("?")[0]
+        else:
+            input_ext = ".mp4"
 
     form_dict = {
         "model_path": model_path,
@@ -244,6 +265,8 @@ async def api_create_test_job(
 
     try:
         test_settings = _build_test_settings(form_dict, camera)
+        # Bổ sung camera_id vào settings để bridge biết ghi vào đâu
+        test_settings["camera_id"] = camera.id
     except ValidationError as exc:
         return JSONResponse(status_code=400, content={"ok": False, "error": exc.message})
 
@@ -252,7 +275,8 @@ async def api_create_test_job(
         input_stream=input_stream,
         input_path=input_path,
         input_ext=input_ext,
-        settings=test_settings
+        settings=test_settings,
+        delete_after_job=(upload_id is not None or (video_file is not None and video_file.filename))
     )
 
     payload = job.to_dict()
@@ -260,6 +284,7 @@ async def api_create_test_job(
     payload["queue_position"] = container.job_use_cases.get_queue_position(job.id)
 
     return JSONResponse(status_code=202, content={"ok": True, "job": payload})
+
 
 @test_video_router.get("/api/test-jobs/{job_id}")
 async def api_get_test_job(request: Request, job_id: str, user=Depends(login_required)):
