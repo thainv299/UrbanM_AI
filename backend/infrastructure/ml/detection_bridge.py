@@ -182,7 +182,6 @@ class VideoStream:
                     if self.stopped:
                         break
                     if is_url:
-                        print("[VideoStream] Mất kết nối. Đang thử lại sau 5s...")
                         time.sleep(5)
                     # Loop lại từ đầu (file) hoặc reconnect (RTSP)
                     self._proc = subprocess.Popen(
@@ -316,7 +315,6 @@ def _normalize_points(points: Optional[List[List[Any]]], width: int, height: int
     if units == "reference" and ref_w and ref_h:
         scale_x = width / float(ref_w)
         scale_y = height / float(ref_h)
-        print(f"[AI Debug] Scaling ROI: ref({ref_w}x{ref_h}) -> actual({width}x{height}), scales: ({scale_x:.2f}, {scale_y:.2f})")
 
         for pt in points:
             if isinstance(pt, (list, tuple)) and len(pt) >= 2:
@@ -339,7 +337,6 @@ def _normalize_points(points: Optional[List[List[Any]]], width: int, height: int
         ref_w, ref_h = 800, 450
         scale_x = width / ref_w
         scale_y = height / ref_h
-        print(f"[AI Debug] Fallback Scaling (Assuming 800x450): scales ({scale_x:.2f}, {scale_y:.2f})")
         for pt in points:
             try:
                 x, y = float(pt[0]), float(pt[1])
@@ -431,7 +428,6 @@ def _load_model(model_path: Path) -> YOLO:
         return YOLO(model_str, task="detect")
 
     model = YOLO(model_str)
-    print(f"[AI Model] Model labels: {model.names}")
     preferred_device = os.environ.get("WEB_DETECT_DEVICE", "").strip()
     if preferred_device:
         try:
@@ -505,28 +501,21 @@ def process_video(
 
     # Lấy kích thước thực tế từ luồng FFmpeg (đã scale về PIPE_WIDTH)
     draw_w, draw_h = capture.draw_w, capture.draw_h
+    preview_w, preview_h = capture.preview_w, capture.preview_h
     draw_scale = draw_w / frame_width
 
     # Throttle theo FPS gốc của video và bước nhảy (Stride)
     # Đảm bảo video chạy đúng tốc độ thực tế
     ideal_frame_time = (1.0 / fps) * process_stride if fps > 0 else 0.033 * process_stride
 
-    # Reset capture
-    capture.set_pos(0)
-
     # Vùng ROI
     raw_roi = settings.get("roi_points")
     roi_meta = settings.get("roi_meta") or {}
-    print(f"[AI Debug] ROI Meta: {roi_meta}")
-    print(f"[AI Debug] Raw ROI type: {type(raw_roi)}, content preview: {str(raw_roi)[:100]}")
 
     # ROI cần scale từ tọa độ video gốc → tọa độ draw_w/draw_h (640px pipe)
     roi_points = _normalize_points(
         raw_roi, draw_w, draw_h, roi_meta
     ) or _full_frame_polygon(draw_w, draw_h)
-
-    print(f"[AI Debug] Frame Resolution gốc: {frame_width}x{frame_height}, Pipe: {draw_w}x{draw_h}")
-    print(f"[AI Debug] Final ROI points (first 3): {roi_points[:3] if roi_points else 'None'}")
 
     roi_polygon = _to_polygon(roi_points)
 
@@ -607,16 +596,16 @@ def process_video(
     preview_queue = queue.Queue(maxsize=1)
     preview_state = {"last_jpeg": None, "stop": False}
 
-    def preview_encoder_worker():
+    def preview_encoder_worker(pw, ph):
         while not preview_state["stop"]:
             try:
                 frame_to_encode = preview_queue.get(timeout=0.2)
                 # Dùng kích thước preview để nén nhanh
-                preview_state["last_jpeg"] = _encode_preview_frame(frame_to_encode, preview_w, preview_h)
+                preview_state["last_jpeg"] = _encode_preview_frame(frame_to_encode, pw, ph)
             except queue.Empty:
                 continue
 
-    threading.Thread(target=preview_encoder_worker, daemon=True).start()
+    threading.Thread(target=preview_encoder_worker, args=(preview_w, preview_h), daemon=True).start()
 
     # OCR Manager setup
     import logging
@@ -650,7 +639,7 @@ def process_video(
                         "progress_percent": None,
                         "elapsed_seconds": round(time.time() - started_at, 1),
                         "latest_status": "Đang tạm dừng...",
-                        "preview_jpeg": _encode_preview_frame(p_frame),
+                        "preview_jpeg": _encode_preview_frame(p_frame, preview_w, preview_h),
                     })
                 time.sleep(0.5)
                 continue
@@ -714,9 +703,6 @@ def process_video(
                     center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
 
                     in_roi = cv2.pointPolygonTest(roi_polygon, (center_x, center_y), False) >= 0
-
-                    if frame_index % 100 == 0:
-                        print(f"[AI Debug] Obj: {label} at ({center_x}, {center_y}), ROI: {in_roi}")
 
                     if not in_roi:
                         continue
