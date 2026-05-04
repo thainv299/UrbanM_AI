@@ -74,6 +74,14 @@ def start_bot_thread(manager_instance):
         return
         
     _is_polling_started = True
-    polling_thread = threading.Thread(target=bot.infinity_polling, daemon=True)
+    
+    def run_polling():
+        try:
+            # Use shorter timeouts to avoid hanging too long
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
+        except Exception as e:
+            print(f"[Telegram Bot] Không thể kết nối polling (Có thể do mạng): {e}")
+            
+    polling_thread = threading.Thread(target=run_polling, daemon=True)
     polling_thread.start()
-    print("[Telegram Bot] Luồng kết nối trực tiếp BOT Telegram đã khởi động thành công.")
+    print("[Telegram Bot] Luồng kết nối BOT Telegram đã được khởi động ở chế độ nền.")

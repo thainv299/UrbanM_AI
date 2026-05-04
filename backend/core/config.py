@@ -9,6 +9,7 @@ PROJECT_ROOT = APP_DIR.parent
 INPUTS_DIR = APP_DIR / "runtime" / "inputs"
 OUTPUTS_DIR = APP_DIR / "runtime" / "outputs"
 PREVIEWS_DIR = APP_DIR / "runtime" / "previews"
+SAMPLES_DIR = PROJECT_ROOT / "data" / "samples"
 
 # Cấu hình file / ML
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".mpeg", ".mpg"}

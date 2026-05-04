@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, Depends, Form, File, UploadFile, status,
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse, FileResponse
 from pathlib import Path
 
-from core.config import ALLOWED_VIDEO_EXTENSIONS, DEFAULT_MODEL_PATH
+from core.config import ALLOWED_VIDEO_EXTENSIONS, DEFAULT_MODEL_PATH, SAMPLES_DIR
 from core.errors import AppError, NotFoundError, ValidationError
 from core.utils import build_placeholder_frame, resolve_path
 from presentation.container import container, templates
@@ -183,6 +183,32 @@ async def api_upload_chunk(
         f.write(content)
         
     return JSONResponse(status_code=200, content={"ok": True})
+    
+@test_video_router.get("/api/server-videos")
+async def api_list_server_videos(user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+        
+    if not SAMPLES_DIR.exists():
+        SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
+        
+    videos = []
+    if SAMPLES_DIR.exists():
+        for p in SAMPLES_DIR.iterdir():
+            if p.is_file() and p.suffix.lower() in ALLOWED_VIDEO_EXTENSIONS:
+                try:
+                    stats = p.stat()
+                    videos.append({
+                        "filename": p.name,
+                        "size": stats.st_size,
+                        "path": str(p)
+                    })
+                except Exception:
+                    continue
+    
+    # Sort by name
+    videos.sort(key=lambda x: x["filename"])
+    return {"ok": True, "videos": videos}
 
 @test_video_router.post("/api/test-jobs")
 async def api_create_test_job(
@@ -202,6 +228,7 @@ async def api_create_test_job(
     process_every_n_frames: Optional[str] = Form(None),
     roi_points: Optional[str] = Form(None),
     no_parking_points: Optional[str] = Form(None),
+    server_filename: Optional[str] = Form(None),
 ):
     if isinstance(user, RedirectResponse):
         return user
@@ -239,6 +266,13 @@ async def api_create_test_job(
             return JSONResponse(status_code=400, content={"ok": False, "error": "Định dạng video không được hỗ trợ."})
         input_ext = Path(video_file.filename).suffix.lower()
         input_stream = io.BytesIO(await video_file.read())
+    elif server_filename:
+        # Chế độ lấy file từ Server
+        file_path = SAMPLES_DIR / server_filename
+        if not file_path.exists():
+            return JSONResponse(status_code=400, content={"ok": False, "error": f"Không tìm thấy file trên server: {server_filename}"})
+        input_path = str(file_path)
+        input_ext = file_path.suffix.lower()
     else:
         # Chế độ Giám sát Trực tiếp (Dùng stream_source từ DB)
         if not camera.stream_source:
@@ -338,44 +372,73 @@ def serve_test_job_stream(job_id: str):
 
 
 @test_video_router.post("/api/test-video/extract-frame")
-async def api_extract_video_frame(video_file: UploadFile = File(...), user=Depends(login_required)):
+async def api_extract_video_frame(
+    video_file: Optional[UploadFile] = File(None), 
+    server_filename: Optional[str] = Form(None),
+    user=Depends(login_required)
+):
     if isinstance(user, RedirectResponse):
         return user
         
-    import cv2
+    import tempfile, os, base64, subprocess
     import numpy as np
-    import tempfile
-    import os
-    import base64
+    import cv2
 
-    # Lưu tạm video
-    suffix = Path(video_file.filename).suffix.lower()
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        content = await video_file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
+    tmp_path = None
+    input_path = None
+    
+    if server_filename:
+        input_path = SAMPLES_DIR / server_filename
+        if not input_path.exists():
+             return JSONResponse(status_code=400, content={"ok": False, "error": "Không tìm thấy file trên server."})
+        input_path = str(input_path)
+    elif video_file and video_file.filename:
+        suffix = Path(video_file.filename).suffix.lower()
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            content = await video_file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+        input_path = tmp_path
+    else:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "Yêu cầu video_file hoặc server_filename."})
 
+    out_jpg = (tmp_path or str(SAMPLES_DIR / "temp_extract")) + f"_{uuid.uuid4().hex}.jpg"
     try:
-        cap = cv2.VideoCapture(tmp_path)
-        success, frame = cap.read()
-        cap.release()
-        
-        if not success:
-            return JSONResponse(status_code=400, content={"ok": False, "error": "Không thể trích xuất frame từ video này."})
-            
-        # Encode frame to JPEG
-        _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-        jpg_as_text = base64.b64encode(buffer).decode('utf-8')
-        
+        # Dùng ffmpeg CLI thay vì OpenCV — xử lý H.265 ổn định hơn
+        result = subprocess.run([
+            "ffmpeg", "-y",
+            "-threads", "1",          # Force single-thread tránh async_lock
+            "-i", input_path,
+            "-frames:v", "1",
+            "-q:v", "2",
+            out_jpg
+        ], capture_output=True, timeout=30)
+
+        if result.returncode != 0 or not Path(out_jpg).exists():
+            return JSONResponse(status_code=400, content={
+                "ok": False,
+                "error": "Không thể trích xuất frame. Kiểm tra ffmpeg đã cài chưa."
+            })
+
+        with open(out_jpg, "rb") as f:
+            jpg_bytes = f.read()
+
+        # Đọc kích thước bằng OpenCV (chỉ đọc JPEG tĩnh — không lỗi)
+        arr = np.frombuffer(jpg_bytes, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        h, w = frame.shape[:2] if frame is not None else (0, 0)
+
         return {
-            "ok": True, 
-            "frame_data": f"data:image/jpeg;base64,{jpg_as_text}",
-            "width": frame.shape[1],
-            "height": frame.shape[0]
+            "ok": True,
+            "frame_data": f"data:image/jpeg;base64,{base64.b64encode(jpg_bytes).decode()}",
+            "width": w,
+            "height": h,
         }
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        for p in (tmp_path, out_jpg):
+            try:
+                if os.path.exists(p): os.remove(p)
+            except: pass
 
 @test_video_router.get("/job-previews/{job_id}.jpg", name="test_video.serve_test_job_preview")
 async def serve_test_job_preview(job_id: str, user=Depends(login_required)):

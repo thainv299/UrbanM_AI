@@ -776,6 +776,18 @@ img, video { display: block; max-width: 100%; }
     object-fit: contain;
 }
 
+#stream-viewer-wrapper:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+}
+#stream-viewer-wrapper:fullscreen #stream-output {
+    max-height: 100vh !important;
+}
+#stream-viewer-wrapper:fullscreen #fullscreen-exit-btn {
+    display: block;
+}
+
 .stream-fullscreen-container:fullscreen .fullscreen-exit-btn,
 .stream-fullscreen-container:-webkit-full-screen .fullscreen-exit-btn {
     display: inline-flex;
@@ -790,9 +802,9 @@ img, video { display: block; max-width: 100%; }
 
 .camera-preview-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 400px));
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 24px;
-    justify-content: center;
+    justify-content: flex-start;
 }
 
 .camera-preview-card {

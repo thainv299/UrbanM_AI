@@ -46,8 +46,15 @@ function initTestVideoForm() {
     }
 
     function renderStatus(job) {
-        // Không hiển thị bảng trạng thái chữ nữa theo yêu cầu
-        statusPanel.innerHTML = "";
+        if (!statusPanel) return;
+        const colorClass = job.status === "running" ? "success" : (job.status === "failed" ? "error" : "warning");
+        statusPanel.innerHTML = `
+            <div class="status-badge ${colorClass}" style="margin-bottom: 8px; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 0.9rem;">
+                <span class="dot"></span>
+                Trạng thái: ${job.status.toUpperCase()}
+            </div>
+            <p style="margin: 0; font-size: 0.95rem; line-height: 1.5; color: var(--text-main);">${job.message || 'Hệ thống đang hoạt động ổn định.'}</p>
+        `;
     }
 
     function renderSummary(summary) {
@@ -291,19 +298,32 @@ function initTestVideoForm() {
     }
 
     // Fullscreen logic
-    const fsContainer = document.getElementById("stream-fullscreen-container");
+    const fsContainer = document.getElementById("stream-viewer-wrapper");
     const fsEnterBtn = document.getElementById("fullscreen-btn");
     const fsExitBtn = document.getElementById("fullscreen-exit-btn");
 
-    if (fsEnterBtn) {
+    if (fsEnterBtn && fsContainer) {
         fsEnterBtn.addEventListener("click", () => {
-            if (fsContainer.requestFullscreen) fsContainer.requestFullscreen();
-            else if (fsContainer.webkitRequestFullscreen) fsContainer.webkitRequestFullscreen();
+            if (fsContainer.requestFullscreen) {
+                fsContainer.requestFullscreen();
+            } else if (fsContainer.webkitRequestFullscreen) {
+                fsContainer.webkitRequestFullscreen();
+            } else if (fsContainer.mozRequestFullScreen) {
+                fsContainer.mozRequestFullScreen();
+            } else if (fsContainer.msRequestFullscreen) {
+                fsContainer.msRequestFullscreen();
+            }
         });
     }
     if (fsExitBtn) {
         fsExitBtn.addEventListener("click", () => {
-            if (document.exitFullscreen) document.exitFullscreen();
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+                document.mozCancelFullScreen();
+            }
         });
     }
 
