@@ -49,6 +49,18 @@ class JobUseCases:
         with self.job_lock:
             return self.jobs.get(job_id)
 
+    def update_job_quality(self, job_id: str, quality: str) -> bool:
+        """Cập nhật chất lượng video đang xử lý"""
+        with self.job_lock:
+            job = self.jobs.get(job_id)
+            if not job:
+                return False
+            # Lưu chất lượng vào progress để Bridge có thể đọc được
+            if not job.progress:
+                job.progress = {}
+            job.progress["requested_quality"] = quality
+            return True
+
     def get_queue_position(self, job_id: str) -> Optional[int]:
         with self.job_lock:
             active_jobs = [
@@ -147,6 +159,15 @@ class JobUseCases:
                 started_at=time.time(),
                 progress=progress_payload,
             )
+            
+            # Kiểm tra xem có lệnh thay đổi chất lượng từ UI không
+            with self.job_lock:
+                job = self.jobs.get(job_id)
+                if job and job.progress:
+                    req_q = job.progress.pop("requested_quality", None)
+                    if req_q:
+                        return {"new_quality": req_q}
+            return None
 
         self.set_job(
             job_id,

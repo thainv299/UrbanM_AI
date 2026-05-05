@@ -45,13 +45,12 @@ PARKING_LABELS = {"car", "bus", "truck"}
 LICENSE_PLATE_LABELS = {"license_plate", "licenseplate", "number_plate", "licence_plate"}
 DETECTABLE_LABELS = TRAFFIC_LABELS | LICENSE_PLATE_LABELS
 
-# Kích thước pipe từ FFmpeg — cap ở 1080p để đảm bảo độ nét và OCR chính xác
-# 1080p (1920px) là mức cân bằng tốt nhất giữa chất lượng và hiệu năng TensorRT
+# Kích thước pipe từ FFmpeg — 1080p (1920px) cho chất lượng cao
 PIPE_WIDTH = 1920
 
 # Kích thước preview để encode JPEG gửi lên web (MJPEG stream)
-# Nhỏ hơn PIPE_WIDTH để tăng tốc encode, giảm giật lag trên trình duyệt
-PREVIEW_WIDTH = 960
+# 1280px (720p) là mức cân bằng tốt cho chất lượng và băng thông
+PREVIEW_WIDTH = 1280
 
 # Màu sắc cho các loại phương tiện
 BOX_COLORS = {
@@ -67,12 +66,12 @@ BOX_COLORS = {
 
 class VideoStream:
     """Luồng đọc frame sử dụng FFmpeg CLI để giải mã thô (Raw Video).
-    Giải pháp tối thượng để tránh crash async_lock của OpenCV trên Windows với H.265.
+    Giải pháp để tránh crash async_lock của OpenCV trên Windows với H.265.
     """
     def __init__(self, path, force_single_thread: bool = False):
         self.path = str(path)
         self.stopped = False
-        self.queue = queue.Queue(maxsize=10)
+        self.queue = queue.Queue(maxsize=32)
         self._is_opened = False
         # FIX #2: Chỉ dùng single-thread khi cần (H.265), H.264 dùng auto-thread
         self._force_single_thread = force_single_thread
@@ -149,18 +148,19 @@ class VideoStream:
 
     def _build_ffmpeg_cmd(self) -> list:
         """Xây dựng lệnh FFmpeg tối ưu."""
-        # FIX #2: threads=1 chỉ khi H.265, còn lại dùng "0" (auto = multithread)
-        threads_val = "1" if self._force_single_thread else "0"
-        return [
+        # FFmpeg giải mã độc lập với AI loop, dùng "0" (auto) để tận dụng đa nhân CPU.
+        # Ngay cả với H.265, FFmpeg vẫn chạy ổn định hơn OpenCV.
+        threads_val = "0" 
+        cmd = [
             "ffmpeg", "-loglevel", "error",
-            "-threads", threads_val,
-            "-i", self.path,
-            # FIX #1: Scale về PIPE_WIDTH (640px) — bằng imgsz YOLO, không resize thừa
+            "-threads", "0", 
+            "-i", str(self.path),
             "-vf", f"scale={self.draw_w}:{self.draw_h}",
             "-f", "rawvideo",
             "-pix_fmt", "bgr24",
             "-"
         ]
+        return cmd
 
     def update(self):
         frame_size = self.draw_w * self.draw_h * 3
@@ -206,9 +206,9 @@ class VideoStream:
                         # Nếu là Video File, đợi cho đến khi có chỗ trong queue để không bị giật/mất frame
                         self.queue.put(frame.copy())
             except Exception as e:
+                print(f"[VideoStream] Lỗi luồng đọc: {e}")
                 if not self.stopped:
-                    print(f"[VideoStream] Lỗi luồng đọc: {e}")
-                time.sleep(1)
+                    time.sleep(1)
 
     def read(self):
         if self.queue.empty() and self.stopped:
@@ -382,7 +382,7 @@ def _full_frame_polygon(width: int, height: int) -> List[List[int]]:
     ]
 
 
-def _encode_preview_frame(frame: np.ndarray, preview_w: int = 0, preview_h: int = 0) -> Optional[bytes]:
+def _encode_preview_frame(frame: np.ndarray, preview_w: int = 0, preview_h: int = 0, jpeg_quality: int = 75) -> Optional[bytes]:
     """Mã hóa frame sang JPEG để preview MJPEG.
     Resize xuống preview_w x preview_h trước khi encode để giảm tải CPU encode.
     Frame AI vẫn giữ nguyên độ nét PIPE_WIDTH.
@@ -390,7 +390,7 @@ def _encode_preview_frame(frame: np.ndarray, preview_w: int = 0, preview_h: int 
     if frame is None or frame.size == 0:
         return None
 
-    # Resize xuống kích thước preview để nén nhanh hơn
+    # Resize xuống kích thước preview để nén nhanh hơn (INTER_LINEAR cho chất lượng tốt hơn)
     if preview_w > 0 and preview_h > 0 and (frame.shape[1] != preview_w or frame.shape[0] != preview_h):
         preview = cv2.resize(frame, (preview_w, preview_h), interpolation=cv2.INTER_LINEAR)
     else:
@@ -399,7 +399,7 @@ def _encode_preview_frame(frame: np.ndarray, preview_w: int = 0, preview_h: int 
     success, encoded = cv2.imencode(
         '.jpg',
         preview,
-        [int(cv2.IMWRITE_JPEG_QUALITY), 80],
+        [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality],
     )
     if not success:
         return None
@@ -442,7 +442,7 @@ def process_video(
     input_path: str = None,
     input_ext: str = None,
     settings: Dict[str, Any] = None,
-    progress_callback: Callable[[Dict[str, Any]], None] = None,
+    progress_callback: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]] = None,
     pause_event: threading.Event = None,
 ) -> Dict[str, Any]:
     """
@@ -504,9 +504,9 @@ def process_video(
     preview_w, preview_h = capture.preview_w, capture.preview_h
     draw_scale = draw_w / frame_width
 
-    # Throttle theo FPS gốc của video và bước nhảy (Stride)
-    # Đảm bảo video chạy đúng tốc độ thực tế
-    ideal_frame_time = (1.0 / fps) * process_stride if fps > 0 else 0.033 * process_stride
+    # Throttle theo FPS gốc của video. Đảm bảo video chạy đúng tốc độ thực tế (Real-time).
+    # Không nhân với process_stride ở đây vì loop chạy từng frame.
+    ideal_frame_time = (1.0 / fps) if fps > 0 else 0.033
 
     # Vùng ROI
     raw_roi = settings.get("roi_points")
@@ -594,18 +594,23 @@ def process_video(
 
     # Luồng nền nén ảnh JPEG
     preview_queue = queue.Queue(maxsize=1)
-    preview_state = {"last_jpeg": None, "stop": False}
+    preview_state = {"last_jpeg": None, "stop": False, "pw": preview_w, "ph": preview_h, "q": 75}
 
-    def preview_encoder_worker(pw, ph):
+    def preview_encoder_worker():
         while not preview_state["stop"]:
             try:
                 frame_to_encode = preview_queue.get(timeout=0.2)
                 # Dùng kích thước preview để nén nhanh
-                preview_state["last_jpeg"] = _encode_preview_frame(frame_to_encode, pw, ph)
+                preview_state["last_jpeg"] = _encode_preview_frame(
+                    frame_to_encode, 
+                    preview_state["pw"], 
+                    preview_state["ph"],
+                    preview_state["q"]
+                )
             except queue.Empty:
                 continue
 
-    threading.Thread(target=preview_encoder_worker, args=(preview_w, preview_h), daemon=True).start()
+    threading.Thread(target=preview_encoder_worker, args=(), daemon=True).start()
 
     # OCR Manager setup
     import logging
@@ -658,13 +663,14 @@ def process_video(
             clean_frame = frame.copy()
 
             if enable_illegal_parking:
-                parking_manager.update_buffer(clean_frame.copy())
+                parking_manager.update_buffer(clean_frame)
 
             frame_index += 1
             current_time = time.time()
 
             # Tracking
-            if process_stride > 1 and (frame_index - 1) % process_stride != 0 and last_results is not None:
+            # Chỉ chạy AI Model (YOLO) theo bước nhảy (Stride)
+            if process_stride > 1 and frame_index % process_stride != 0 and last_results is not None:
                 results = last_results
             else:
                 results = model.track(frame, persist=True, tracker="bytetrack.yaml", verbose=False, imgsz=640)
@@ -830,20 +836,44 @@ def process_video(
             cv2.putText(frame, f"FPS: {int(current_fps)}", (30, draw_h - 40),
                         cv2.FONT_HERSHEY_SIMPLEX, f_scale, (0, 255, 255), f_thick)
 
-            # Nén ảnh JPEG bằng luồng phụ
-            if progress_callback is not None:
+            # 3. GỬI TIẾN ĐỘ LÊN WEB (Throttled - 10 FPS cho UI là đủ)
+            if progress_callback is not None and frame_index % 2 == 0:
                 if preview_queue.empty():
                     preview_queue.put(frame)
 
-                progress_callback({
+                response = progress_callback({
                     "phase": "running_detection",
                     "latest_status": latest_status,
                     "preview_jpeg": preview_state["last_jpeg"],
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
+                    "processed_frames": frame_index
                 })
+                
+                # Xử lý lệnh từ Manager (ví dụ đổi chất lượng)
+                if response and "new_quality" in response:
+                    q = response["new_quality"]
+                    if q == "low":
+                        preview_state["pw"], preview_state["ph"] = 854, 480
+                        preview_state["q"] = 40
+                    elif q == "medium":
+                        preview_state["pw"], preview_state["ph"] = 1280, 720
+                        preview_state["q"] = 70
+                    elif q == "high":
+                        preview_state["pw"], preview_state["ph"] = 1920, 1080
+                        preview_state["q"] = 85
+                    elif q == "ultra":
+                        preview_state["pw"], preview_state["ph"] = 1920, 1080
+                        preview_state["q"] = 98
+                    print(f"[AI] Đã đổi chất lượng sang: {q} ({preview_state['pw']}x{preview_state['ph']}, quality={preview_state['q']})")
 
-            # Throttle FPS để video chạy đúng tốc độ thực tế
+            # 4. THROTTLE & PROFILING
             elapsed = time.time() - frame_start_time
+            
+            # Chỉ log profile mỗi 100 frame để không làm chậm hệ thống
+            if frame_index % 100 == 0:
+                print(f"[AI Profile] Total: {elapsed*1000:.1f}ms | Stride: {process_stride}")
+                # Nếu muốn chi tiết hơn, có thể thêm timing cho từng phần ở đây
+            
             if elapsed < ideal_frame_time:
                 time.sleep(ideal_frame_time - elapsed)
 

@@ -3,7 +3,7 @@ import uuid
 import json
 from typing import Any, Dict, Optional, List
 
-from fastapi import APIRouter, Request, Depends, Form, File, UploadFile, status, HTTPException
+from fastapi import APIRouter, Request, Depends, Form, File, UploadFile, status, HTTPException, Body
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse, FileResponse
 from pathlib import Path
 
@@ -361,6 +361,18 @@ async def api_resume_test_job(job_id: str, user=Depends(login_required)):
     if not success:
         return JSONResponse(status_code=400, content={"ok": False, "error": "Không thể tiếp tục job này."})
     return {"ok": True, "message": "Đã tiếp tục quá trình phân tích."}
+    
+@test_video_router.post("/api/test-jobs/{job_id}/quality")
+async def api_update_job_quality(job_id: str, quality: str = Body(..., embed=True), user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+    if quality not in ["low", "medium", "high", "ultra"]:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "Chất lượng không hợp lệ."})
+        
+    success = container.job_use_cases.update_job_quality(job_id, quality)
+    if not success:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "Không tìm thấy job."})
+    return {"ok": True, "message": f"Đã yêu cầu đổi sang chất lượng: {quality}"}
 
 
 @test_video_router.get("/api/test-jobs/{job_id}/stream", name="test_video.serve_test_job_stream")

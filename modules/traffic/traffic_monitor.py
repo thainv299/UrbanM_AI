@@ -21,6 +21,10 @@ class TrafficMonitor:
         self.current_bboxes = [] 
         self.last_occupancy = 0.0
         
+        # Cache cho Masking (Tối ưu hiệu năng)
+        self._cached_roi_mask = None
+        self._cached_roi_pixel_area = 0
+        
     def reset_counters(self):
         self.vehicle_count = 0
         self.people_count = 0
@@ -91,27 +95,26 @@ class TrafficMonitor:
         if self.roi_polygon is not None and len(self.current_bboxes) > 0 and len(frame_shape) >= 2:
             h, w = frame_shape[:2]
             
-            # Tạo nền đen
-            roi_mask = np.zeros((h, w), dtype=np.uint8)
+            # Khởi tạo Mask ROI một lần duy nhất (Cache)
+            if self._cached_roi_mask is None or self._cached_roi_mask.shape != (h, w):
+                self._cached_roi_mask = np.zeros((h, w), dtype=np.uint8)
+                cv2.fillPoly(self._cached_roi_mask, [np.array(self.roi_polygon, dtype=np.int32)], 255)
+                self._cached_roi_pixel_area = cv2.countNonZero(self._cached_roi_mask)
+            
+            # Tạo mask cho các phương tiện hiện tại
             vehicles_mask = np.zeros((h, w), dtype=np.uint8)
-            
-            # Vẽ ROI màu trắng (255)
-            cv2.fillPoly(roi_mask, [np.array(self.roi_polygon, dtype=np.int32)], 255)
-            
-            # Vẽ các Bounding Box màu trắng (255)
             for (x1, y1, x2, y2) in self.current_bboxes:
                 x1, y1, x2, y2 = int(max(0, x1)), int(max(0, y1)), int(min(w, x2)), int(min(h, y2))
                 cv2.rectangle(vehicles_mask, (x1, y1), (x2, y2), 255, -1)
                 
             # Giao 2 vùng lại (Chỉ lấy phần xe nằm TRONG ROI)
-            overlap_mask = cv2.bitwise_and(vehicles_mask, roi_mask)
+            overlap_mask = cv2.bitwise_and(vehicles_mask, self._cached_roi_mask)
             
             # Đếm số pixel màu trắng
-            roi_pixel_area = cv2.countNonZero(roi_mask)
             occupied_pixel_area = cv2.countNonZero(overlap_mask)
             
-            if roi_pixel_area > 0:
-                occupancy_percent = (occupied_pixel_area / roi_pixel_area) * 100.0
+            if self._cached_roi_pixel_area > 0:
+                occupancy_percent = (occupied_pixel_area / self._cached_roi_pixel_area) * 100.0
 
         self.last_occupancy = occupancy_percent # Lưu lại để vẽ lên màn hình
 

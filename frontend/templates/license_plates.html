@@ -116,6 +116,7 @@
             <table class="data-table">
                 <thead>
                     <tr>
+                        <th style="text-align: center; width: 50px;">STT</th>
                         <th>Biển Số</th>
                         <th style="text-align: center;">Ngày</th>
                         <th style="text-align: center;">Giờ</th>
@@ -123,10 +124,11 @@
                     </tr>
                 </thead>
                 <tbody>
-                    ${plates.map(plate => {
+                    ${plates.map((plate, index) => {
             const firstImage = plate.image_paths ? plate.image_paths.split(',')[0].replace(/^\/+/, '') : '';
             return `
                         <tr>
+                            <td style="text-align: center;"><strong>${index + 1}</strong></td>
                             <td>
                                 <strong>${plate.license_plate || 'N/A'}</strong>
                             </td>

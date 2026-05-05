@@ -982,3 +982,89 @@ input:checked + .slider:before {
     font-weight: 500;
     color: var(--text-muted);
 }
+/* QUALITY SETTINGS OVERLAY */
+.gear-btn {
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.3s var(--ease);
+}
+.gear-btn:hover {
+    background: rgba(0, 0, 0, 0.7);
+    transform: rotate(45deg);
+    border-color: var(--brand-light);
+}
+
+.quality-menu {
+    position: absolute;
+    top: 50px;
+    right: 0;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    min-width: 160px;
+    box-shadow: var(--shadow-float);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: menu-enter 0.2s var(--ease);
+    z-index: 100;
+}
+
+@keyframes menu-enter {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.menu-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-subtle);
+    padding: 4px 12px;
+    letter-spacing: 0.05em;
+}
+
+.quality-option {
+    background: transparent;
+    border: none;
+    padding: 10px 12px;
+    border-radius: var(--r-sm);
+    text-align: left;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.quality-option:hover {
+    background: var(--surface);
+    color: var(--brand-blue);
+}
+
+.quality-option.active {
+    background: var(--surface-hover);
+    color: var(--brand-blue);
+    font-weight: 700;
+}
+
+.quality-option.active::after {
+    content: '✓';
+    font-size: 0.8rem;
+}

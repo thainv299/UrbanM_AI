@@ -127,7 +127,7 @@ class ParkingManager:
                 if track_id in self._pending_plate_updates:
                     record_data['plate'] = self._pending_plate_updates.pop(track_id)
 
-                record_data['frames'].append(frame_copy.copy())
+                record_data['frames'].append(frame_copy)
                 record_data['frames_needed'] -= 1
                 if record_data['frames_needed'] <= 0:
                     threading.Thread(target=self._save_evidence_and_notify_thread, args=(track_id, record_data), daemon=True).start()
@@ -213,6 +213,38 @@ class ParkingManager:
             for f in data['frames']:
                 out.write(f)
             out.release()
+            
+            # Convert to H.264 for web browser compatibility
+            try:
+                import subprocess, shutil
+                temp_vid = video_path.replace(".mp4", "_temp.mp4")
+                shutil.move(video_path, temp_vid)
+                
+                ffmpeg_cmd = shutil.which("ffmpeg")
+                if not ffmpeg_cmd:
+                    local_appdata = os.environ.get("LOCALAPPDATA", "")
+                    winget_packages = os.path.join(local_appdata, "Microsoft", "WinGet", "Packages")
+                    if os.path.exists(winget_packages):
+                        for root, dirs, files in os.walk(winget_packages):
+                            if "ffmpeg.exe" in files:
+                                ffmpeg_cmd = os.path.join(root, "ffmpeg.exe")
+                                break
+                if not ffmpeg_cmd:
+                    ffmpeg_cmd = "ffmpeg"
+                
+                subprocess.run([
+                    ffmpeg_cmd, "-i", temp_vid, "-c:v", "libx264", "-preset", "fast", "-y", video_path
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
+                    if os.path.exists(temp_vid): os.remove(temp_vid)
+                else:
+                    shutil.move(temp_vid, video_path)
+            except Exception as e:
+                print(f"[ParkingManager] Lỗi convert video sang H.264: {e}")
+                temp_vid = video_path.replace(".mp4", "_temp.mp4")
+                if os.path.exists(temp_vid) and not os.path.exists(video_path):
+                    shutil.move(temp_vid, video_path)
             
         # Lưu file Metadata JSON
         meta = {
