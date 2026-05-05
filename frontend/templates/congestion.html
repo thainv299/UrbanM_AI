@@ -57,6 +57,7 @@
             <table class="data-table">
                 <thead>
                     <tr>
+                        <th style="text-align: center; width: 50px;">STT</th>
                         <th>Camera</th>
                         <th style="text-align: center;">Mức độ</th>
                         <th style="text-align: center;">Thời gian bắt đầu</th>
@@ -65,8 +66,9 @@
                     </tr>
                 </thead>
                 <tbody>
-                    ${logs.map(log => `
+                    ${logs.map((log, index) => `
                         <tr>
+                            <td style="text-align: center;"><strong>${index + 1}</strong></td>
                             <td>
                                 <strong>${log.camera_name || 'N/A'}</strong>
                             </td>

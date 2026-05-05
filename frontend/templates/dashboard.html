@@ -3,8 +3,16 @@
 {% block title %}Dashboard | CityVision AI Portal{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-    <h2 class="page-title" style="margin-bottom: 0;">Dashboard</h2>
+<style>
+    /* Ép layout trang Dashboard gọn lại để fit màn hình 100vh */
+    .page-content { padding: 16px 40px !important; }
+    .stat-value { font-size: 1.8rem !important; margin-bottom: 4px !important; }
+    .stat-card-top { margin-bottom: 8px !important; }
+    .stat-bottom { font-size: 0.8rem !important; }
+    .page-head { margin-bottom: 16px !important; }
+</style>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <h2 class="page-title" style="margin-bottom: 0; font-size: 1.8rem;">Dashboard</h2>
 
     <!-- Quick Actions -->
     <div style="display: flex; gap: 12px;">
@@ -28,13 +36,13 @@
 </div>
 
 <!-- Stats -->
-<section class="stats-grid">
-    <div class="stat-card" style="cursor: pointer;"
+<section class="stats-grid" style="margin-bottom: 16px; gap: 16px;">
+    <div class="stat-card" style="cursor: pointer; padding: 16px;"
         onclick="window.location.href=`{{ url_for('users.users_page') }}`">
         <div class="stat-card-top">
             <span class="stat-title">Người dùng</span>
             <div class="stat-icon indigo">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
                     <circle cx="9" cy="7" r="4"></circle>
@@ -47,12 +55,12 @@
         <div class="stat-bottom"><span class="trend"></span>Tài khoản đăng ký</div>
     </div>
 
-    <div class="stat-card" style="cursor: pointer;"
+    <div class="stat-card" style="cursor: pointer; padding: 16px;"
         onclick="window.location.href=`{{ url_for('vehicles.vehicles_page') }}`">
         <div class="stat-card-top">
             <span class="stat-title">Tổng số xe</span>
             <div class="stat-icon amber">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <rect x="1" y="3" width="15" height="13"></rect>
                     <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
@@ -65,12 +73,12 @@
         <div class="stat-bottom"><span class="trend"></span>Lượt xe ghi nhận được</div>
     </div>
 
-    <div class="stat-card" style="cursor: pointer;"
+    <div class="stat-card" style="cursor: pointer; padding: 16px;"
         onclick="window.location.href=`{{ url_for('violations.violations_page') }}`">
         <div class="stat-card-top">
             <span class="stat-title">Xe đỗ sai</span>
             <div class="stat-icon rose">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon>
                     <line x1="15" y1="9" x2="9" y2="15"></line>
@@ -83,12 +91,12 @@
         <div class="stat-bottom"><span class="trend down">!</span> Cảnh báo vi phạm</div>
     </div>
 
-    <div class="stat-card" style="cursor: pointer;"
+    <div class="stat-card" style="cursor: pointer; padding: 16px;"
         onclick="window.location.href=`{{ url_for('congestion.congestion_page') }}`">
         <div class="stat-card-top">
             <span class="stat-title">Tắc nghẽn</span>
             <div class="stat-icon emerald">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"></circle>
                     <path d="M12 8v4"></path>
@@ -102,15 +110,15 @@
 </section>
 
 <!-- Chart Area -->
-<section class="panel margin-top">
-    <div class="panel-header">
+<section class="panel" style="padding: 16px 24px;">
+    <div class="panel-header" style="margin-bottom: 12px;">
         <h3>Thống kê lưu lượng xe</h3>
         <select class="field" style="width: auto; padding: 6px 12px; margin-bottom: 0;">
             <option>Tháng này</option>
             <option>Tháng trước</option>
         </select>
     </div>
-    <div style="position: relative; height: 350px; width: 100%;">
+    <div style="position: relative; height: 260px; width: 100%;">
         <canvas id="vehicleChart"></canvas>
     </div>
 </section>

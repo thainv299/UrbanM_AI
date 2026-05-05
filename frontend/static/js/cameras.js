@@ -276,11 +276,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function renderTable() {
         if (!state.cameras.length) {
-            tableBody.innerHTML = `<tr><td colspan="5"><div class="empty-state">Chưa có camera nào.</div></td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="6"><div class="empty-state">Chưa có camera nào.</div></td></tr>`;
             return;
         }
 
-        tableBody.innerHTML = state.cameras.map((camera) => {
+        tableBody.innerHTML = state.cameras.map((camera, index) => {
             let displaySource = camera.stream_source || "Chưa có nguồn";
             if (camera.enable_simulation && camera.stream_source) {
                 const filename = camera.stream_source.split(/[\\\/]/).pop();
@@ -289,6 +289,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             return `
                 <tr>
+                    <td style="text-align: center;"><strong>${index + 1}</strong></td>
                     <td><strong>${camera.name}</strong></td>
                     <td><code class="small" title="${camera.stream_source}">${displaySource}</code></td>
                     <td>

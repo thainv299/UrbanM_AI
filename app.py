@@ -116,6 +116,17 @@ def create_app() -> FastAPI:
     app.include_router(congestion_router)
     app.include_router(test_video_router)
 
+    @app.on_event("startup")
+    async def startup_event():
+        # Khởi động các camera active ngay khi server chạy
+        print("[System] Khởi động luồng xử lý camera nền...")
+        container.job_use_cases.start_active_cameras(container.camera_use_cases)
+
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        # Dừng tất cả các task khi tắt server
+        container.job_use_cases.stop_all_jobs()
+
     return app
 
 app = create_app()
