@@ -127,7 +127,7 @@ class ParkingManager:
                 if track_id in self._pending_plate_updates:
                     record_data['plate'] = self._pending_plate_updates.pop(track_id)
 
-                record_data['frames'].append(frame_copy.copy())
+                record_data['frames'].append(frame_copy)
                 record_data['frames_needed'] -= 1
                 if record_data['frames_needed'] <= 0:
                     threading.Thread(target=self._save_evidence_and_notify_thread, args=(track_id, record_data), daemon=True).start()
