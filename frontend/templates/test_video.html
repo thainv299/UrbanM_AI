@@ -62,6 +62,20 @@
                 <img id="stream-output" class="preview-frame" alt="AI Analysis Stream"
                     style="width: 100%; height: auto; max-height: 80vh; object-fit: contain; display: block; margin: 0 auto; z-index: 1;">
 
+                <!-- Quality Settings Gear -->
+                <div id="quality-settings-container" class="video-overlay-control" style="position: absolute; top: 12px; right: 12px; z-index: 10;">
+                    <button type="button" id="quality-gear-btn" class="gear-btn" title="Chất lượng video">
+                        ⚙️
+                    </button>
+                    <div id="quality-menu" class="quality-menu" style="display: none;">
+                        <p class="menu-title">Chất lượng</p>
+                        <button type="button" class="quality-option" data-quality="low">Thấp (480p)</button>
+                        <button type="button" class="quality-option" data-quality="medium">Trung bình (720p)</button>
+                        <button type="button" class="quality-option active" data-quality="high">Cao (1080p)</button>
+                        <button type="button" class="quality-option" data-quality="ultra">Siêu nét (Full HD)</button>
+                    </div>
+                </div>
+
                 <div id="stream-loader"
                     style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); z-index: 2; color: #fff;">
                     <div class="loader-spinner"
