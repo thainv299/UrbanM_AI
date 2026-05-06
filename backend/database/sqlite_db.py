@@ -162,17 +162,28 @@ def init_db() -> None:
         connection.commit()
 
 
-def get_total_vehicle_count() -> int:
-    """Lấy tổng số xe đi qua"""
+def get_total_vehicle_count(start_date: str = None, end_date: str = None) -> int:
+    """Lấy tổng số xe đi qua trong khoảng thời gian"""
+    query = "SELECT SUM(so_luong_xe) as total FROM thong_ke_giao_thong"
+    params = []
+    
+    if start_date or end_date:
+        conditions = []
+        if start_date:
+            conditions.append("ngay_ghi_nhan >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("ngay_ghi_nhan <= ?")
+            params.append(end_date)
+        query += " WHERE " + " AND ".join(conditions)
+        
     with connect() as connection:
-        row = connection.execute(
-            "SELECT SUM(so_luong_xe) as total FROM thong_ke_giao_thong"
-        ).fetchone()
+        row = connection.execute(query, params).fetchone()
     return int(row["total"]) if row["total"] else 0
 
 
 def get_illegal_parking_violations() -> list:
-    """Lấy danh sách xe đỗ sai (chưa giải quyết)"""
+    """Lấy danh sách xe đỗ sai (giới hạn 50 bản ghi gần nhất)"""
     with connect() as connection:
         rows = connection.execute(
             """
@@ -187,6 +198,25 @@ def get_illegal_parking_violations() -> list:
         ).fetchall()
     return [dict(row) for row in rows]
 
+def get_illegal_parking_count(start_date: str = None, end_date: str = None) -> int:
+    """Lấy tổng số vi phạm đỗ xe trong khoảng thời gian"""
+    query = "SELECT COUNT(*) as total FROM vi_pham_do_xe"
+    params = []
+    
+    if start_date or end_date:
+        conditions = []
+        if start_date:
+            conditions.append("DATE(thoi_gian_vi_pham) >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("DATE(thoi_gian_vi_pham) <= ?")
+            params.append(end_date)
+        query += " WHERE " + " AND ".join(conditions)
+        
+    with connect() as connection:
+        row = connection.execute(query, params).fetchone()
+    return row["total"] if row and row["total"] else 0
+
 def resolve_parking_violation(violation_id: int) -> bool:
     """Đánh dấu vi phạm đỗ xe đã được giải quyết"""
     with connect() as connection:
@@ -198,18 +228,23 @@ def resolve_parking_violation(violation_id: int) -> bool:
         return cursor.rowcount > 0
 
 
-def get_congestion_count() -> int:
-    """Lấy số lần tắc nghẽn trong hôm nay"""
-    from datetime import datetime
-    today = datetime.now().strftime("%Y-%m-%d")
+def get_congestion_count(start_date: str = None, end_date: str = None) -> int:
+    """Lấy tổng số lần tắc nghẽn trong khoảng thời gian"""
+    query = "SELECT COUNT(*) as total FROM nhat_ky_un_tac"
+    params = []
+    
+    if start_date or end_date:
+        conditions = []
+        if start_date:
+            conditions.append("DATE(thoi_gian_bat_dau) >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("DATE(thoi_gian_bat_dau) <= ?")
+            params.append(end_date)
+        query += " WHERE " + " AND ".join(conditions)
+        
     with connect() as connection:
-        row = connection.execute(
-            """
-            SELECT COUNT(*) as total FROM nhat_ky_un_tac
-            WHERE DATE(thoi_gian_bat_dau) = ?
-            """,
-            (today,)
-        ).fetchone()
+        row = connection.execute(query, params).fetchone()
     return row["total"] if row and row["total"] else 0
 
 def get_congestion_history() -> list:

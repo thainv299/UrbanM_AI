@@ -455,9 +455,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     <td>
                         <div style="font-weight: 700; color: var(--text-main); margin-bottom: 4px;">${camera.name}</div>
                         <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                            ${camera.enable_congestion ? '<span data-tooltip="Phát hiện Tắc nghẽn" style="width:10px; height:10px; border-radius:50%; background:var(--brand-main); display:inline-block;"></span>' : ''}
-                            ${camera.enable_illegal_parking ? '<span data-tooltip="Phát hiện Đỗ sai" style="width:10px; height:10px; border-radius:50%; background:orange; display:inline-block;"></span>' : ''}
-                            ${camera.enable_license_plate ? '<span data-tooltip="Nhận diện Biển số" style="width:10px; height:10px; border-radius:50%; background:teal; display:inline-block;"></span>' : ''}
+                            ${camera.enable_congestion ? '<span data-tooltip="Phát hiện Tắc nghẽn" style="width:10px; height:10px; border-radius:50%; background:#ef4444; display:inline-block;"></span>' : ''}
+                            ${camera.enable_illegal_parking ? '<span data-tooltip="Phát hiện Đỗ sai" style="width:10px; height:10px; border-radius:50%; background:#f59e0b; display:inline-block;"></span>' : ''}
+                            ${camera.enable_license_plate ? '<span data-tooltip="Nhận diện Biển số" style="width:10px; height:10px; border-radius:50%; background:#2563eb; display:inline-block;"></span>' : ''}
                         </div>
                     </td>
                     <td>
@@ -465,7 +465,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             ${displaySource}
                         </div>
                     </td>
-                    <td>
+                    <td style="text-align: center;">
                         <span class="badge ${camera.is_active ? "success" : "muted"}" style="font-size: 0.7rem; padding: 2px 8px;">
                             ${camera.is_active ? "Hoạt động" : "Đang tắt"}
                         </span>
