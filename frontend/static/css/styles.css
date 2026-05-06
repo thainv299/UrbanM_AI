@@ -1007,7 +1007,7 @@ input:checked + .slider:before {
 
 .quality-menu {
     position: absolute;
-    top: 50px;
+    bottom: 50px;
     right: 0;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(12px);
@@ -1067,4 +1067,14 @@ input:checked + .slider:before {
 .quality-option.active::after {
     content: '✓';
     font-size: 0.8rem;
+}
+/* SERVER BROWSER PREVIEW */
+.server-video-item:hover {
+    border-color: var(--brand-main) !important;
+    background: var(--bg-panel) !important;
+    transform: translateX(4px);
+}
+.server-video-item.active {
+    border-color: var(--brand-main) !important;
+    background: rgba(var(--brand-rgb), 0.05) !important;
 }

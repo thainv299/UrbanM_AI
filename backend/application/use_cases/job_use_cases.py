@@ -143,11 +143,7 @@ class JobUseCases:
             elif phase == "finalizing_output":
                 message = "Đang hoàn tất video kết quả..."
             elif processed_frames is not None:
-                total_text = total_frames if total_frames else "..."
-                if percent is None:
-                    message = f"Đang xử lý {processed_frames}/{total_text} frame..."
-                else:
-                    message = f"Đang xử lý {processed_frames}/{total_text} frame ({percent:.1f}%)"
+                message = "Hệ thống đang hoạt động..."
             else:
                 message = "Đang xử lý video..."
 

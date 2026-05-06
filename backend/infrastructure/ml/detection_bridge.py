@@ -869,11 +869,6 @@ def process_video(
             # 4. THROTTLE & PROFILING
             elapsed = time.time() - frame_start_time
             
-            # Chỉ log profile mỗi 100 frame để không làm chậm hệ thống
-            if frame_index % 100 == 0:
-                print(f"[AI Profile] Total: {elapsed*1000:.1f}ms | Stride: {process_stride}")
-                # Nếu muốn chi tiết hơn, có thể thêm timing cho từng phần ở đây
-            
             if elapsed < ideal_frame_time:
                 time.sleep(ideal_frame_time - elapsed)
 

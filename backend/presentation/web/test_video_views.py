@@ -189,26 +189,98 @@ async def api_list_server_videos(user=Depends(login_required)):
     if isinstance(user, RedirectResponse):
         return user
         
-    if not SAMPLES_DIR.exists():
-        SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
+    data_root = PROJECT_ROOT / "data"
+    if not data_root.exists():
+        data_root.mkdir(parents=True, exist_ok=True)
         
-    videos = []
-    if SAMPLES_DIR.exists():
-        for p in SAMPLES_DIR.iterdir():
-            if p.is_file() and p.suffix.lower() in ALLOWED_VIDEO_EXTENSIONS:
-                try:
-                    stats = p.stat()
-                    videos.append({
-                        "filename": p.name,
-                        "size": stats.st_size,
-                        "path": str(p)
-                    })
-                except Exception:
-                    continue
+    grouped_videos = {} # { "Folder Name": [video_info, ...] }
     
-    # Sort by name
-    videos.sort(key=lambda x: x["filename"])
-    return {"ok": True, "videos": videos}
+    # Duyệt qua các thư mục con trong data/
+    for p in data_root.rglob("*"):
+        if p.is_file() and p.suffix.lower() in ALLOWED_VIDEO_EXTENSIONS:
+            try:
+                # Lấy tên thư mục cha (tương đối so với data/)
+                rel_parent = p.parent.relative_to(data_root)
+                folder_name = str(rel_parent) if str(rel_parent) != "." else "Gốc (samples)"
+                
+                if folder_name not in grouped_videos:
+                    grouped_videos[folder_name] = []
+                
+                stats = p.stat()
+                grouped_videos[folder_name].append({
+                    "filename": p.name,
+                    "size": stats.st_size,
+                    "path": str(p),
+                    "rel_path": str(p.relative_to(data_root))
+                })
+            except Exception:
+                continue
+    
+    # Sắp xếp các video trong từng nhóm
+    for folder in grouped_videos:
+        grouped_videos[folder].sort(key=lambda x: x["filename"])
+        
+    return {"ok": True, "groups": grouped_videos}
+
+@test_video_router.get("/api/server-videos/preview")
+async def api_get_server_video_preview(rel_path: str, user=Depends(login_required)):
+    if isinstance(user, RedirectResponse):
+        return user
+        
+    import subprocess, tempfile, os
+    
+    data_root = PROJECT_ROOT / "data"
+    input_path = (data_root / rel_path).resolve()
+    
+    # Bảo mật: Đảm bảo path vẫn nằm trong thư mục data
+    if not str(input_path).startswith(str(data_root.resolve())):
+        raise HTTPException(status_code=403, detail="Truy cập bị từ chối.")
+        
+    if not input_path.exists():
+        raise HTTPException(status_code=404, detail="Không tìm thấy file video.")
+        
+    # Tạo file tạm cho ảnh preview
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        out_jpg = tmp.name
+
+    try:
+        # Trích xuất frame tại giây thứ 1 (hoặc đầu tiên nếu ngắn hơn)
+        # -ss 1 đặt trước -i để nhanh hơn, nhưng đôi khi không chính xác với một số codec
+        # Đặt sau -i để chắc chắn lấy được ảnh có nội dung
+        process = subprocess.run([
+            "ffmpeg", "-y",
+            "-i", str(input_path),
+            "-ss", "00:00:01",
+            "-frames:v", "1",
+            "-q:v", "4",  # Chất lượng vừa phải cho preview
+            "-f", "image2",
+            out_jpg
+        ], capture_output=True, timeout=10)
+        
+        if process.returncode != 0 or not os.path.exists(out_jpg):
+            # Nếu giây thứ 1 lỗi (video ngắn), thử lấy frame đầu tiên
+            subprocess.run([
+                "ffmpeg", "-y",
+                "-i", str(input_path),
+                "-frames:v", "1",
+                "-q:v", "4",
+                out_jpg
+            ], capture_output=True, timeout=5)
+
+        if os.path.exists(out_jpg):
+            with open(out_jpg, "rb") as f:
+                content = f.read()
+            return StreamingResponse(io.BytesIO(content), media_type="image/jpeg")
+        else:
+            # Fallback nếu hoàn toàn không trích xuất được
+            return StreamingResponse(
+                io.BytesIO(build_placeholder_frame("Không có preview", rel_path)),
+                media_type="image/jpeg"
+            )
+    finally:
+        if os.path.exists(out_jpg):
+            try: os.remove(out_jpg)
+            except: pass
 
 @test_video_router.post("/api/test-jobs")
 async def api_create_test_job(

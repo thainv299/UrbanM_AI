@@ -198,17 +198,38 @@
 <div id="server-browser-modal"
     style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center;">
     <div class="panel"
-        style="width: 600px; max-width: 95%; max-height: 80vh; display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border); box-shadow: var(--shadow-lg);">
+        style="width: 1100px; max-width: 98%; max-height: 90vh; display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border); box-shadow: var(--shadow-lg);">
         <div class="panel-header" style="padding: 16px;">
             <h3 style="margin: 0;">Duyệt Video trên Máy chủ</h3>
             <button type="button" class="close-btn" id="close-server-browser"
                 style="background:none; border:none; font-size: 1.5rem; cursor:pointer;">✕</button>
         </div>
-        <div style="padding: 16px; flex: 1; overflow-y: auto;">
-            <p class="muted small" style="margin-bottom: 12px;">Các file được lấy từ thư mục <code>data/samples</code>
-                trên server.</p>
-            <div id="server-file-list" style="display: grid; gap: 8px;">
-                <p class="muted center">Đang tải danh sách file...</p>
+        <div style="padding: 16px; flex: 1; overflow: hidden; display: flex; gap: 16px;">
+            <!-- Left: File List -->
+            <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+                <p class="muted small" style="margin-bottom: 4px;">Danh sách video (<code>data/samples</code>)</p>
+                <div id="server-file-list" style="display: grid; gap: 8px;">
+                    <p class="muted center">Đang tải danh sách file...</p>
+                </div>
+            </div>
+
+            <!-- Right: Preview Pane -->
+            <div id="server-file-preview-pane" style="width: 450px; display: flex; flex-direction: column; gap: 16px; padding: 16px; border-left: 1px solid var(--border); background: var(--bg-main); border-radius: 8px;">
+                <p class="muted small" style="margin-bottom: 0;">Xem trước</p>
+                <div style="width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 6px; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border);">
+                    <img id="server-file-preview-img" style="width: 100%; height: 100%; object-fit: contain; display: none;">
+                    <div id="server-file-preview-placeholder" style="text-align: center; color: var(--text-subtle);">
+                        <div style="font-size: 1.5rem; margin-bottom: 4px;">🎬</div>
+                        <div class="small">Chọn file để xem</div>
+                    </div>
+                    <div id="server-file-preview-loader" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; color: #fff; font-size: 0.8rem;">
+                        Đang lấy ảnh...
+                    </div>
+                </div>
+                <div id="server-file-info" style="display: none;">
+                    <div id="server-file-info-name" style="font-weight: 600; font-size: 0.85rem; word-break: break-all; margin-bottom: 4px;"></div>
+                    <div id="server-file-info-size" class="muted small"></div>
+                </div>
             </div>
         </div>
         <div style="padding: 16px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end;">
