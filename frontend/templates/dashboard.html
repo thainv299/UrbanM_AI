@@ -10,6 +10,14 @@
     .stat-card-top { margin-bottom: 8px !important; }
     .stat-bottom { font-size: 0.8rem !important; }
     .page-head { margin-bottom: 16px !important; }
+    
+    /* Màu sắc cho các dấu chấm loại xe */
+    .type-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-0 { background-color: #2563eb; }
+    .dot-1 { background-color: #06b6d4; }
+    .dot-2 { background-color: #10b981; }
+    .dot-3 { background-color: #f59e0b; }
+    .dot-4 { background-color: #f43f5e; }
 </style>
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
     <h2 class="page-title" style="margin-bottom: 0; font-size: 1.8rem;">Dashboard</h2>
@@ -43,11 +51,31 @@
 </div>
 
 <script>
-    document.getElementById('dashboard-period-filter').addEventListener('change', function() {
-        const period = this.value;
+    // Hàm dùng chung để cập nhật các bộ lọc trên Dashboard (giữ lại các tham số cũ)
+    function updateDashboardFilters(params) {
         const url = new URL(window.location.href);
-        url.searchParams.set('period', period);
+        for (const [key, value] of Object.entries(params)) {
+            url.searchParams.set(key, value);
+        }
         window.location.href = url.toString();
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        // Bộ lọc tổng quát (Hôm nay, 7 ngày, 30 ngày)
+        const periodFilter = document.getElementById('dashboard-period-filter');
+        if (periodFilter) {
+            periodFilter.addEventListener('change', function() {
+                updateDashboardFilters({ 'period': this.value });
+            });
+        }
+
+        // Bộ lọc riêng cho biểu đồ lưu lượng
+        const chartFilter = document.getElementById('chart-period-filter');
+        if (chartFilter) {
+            chartFilter.addEventListener('change', function() {
+                updateDashboardFilters({ 'chart_period': this.value });
+            });
+        }
     });
 </script>
 
@@ -128,8 +156,13 @@
 <!-- Chart Area -->
 <section class="panel" style="padding: 16px 24px; margin-bottom: 16px;">
     <div class="panel-header" style="margin-bottom: 12px;">
-        <h3 style="font-size: 1.1rem;">Thống kê lưu lượng xe</h3>
-        <div class="small muted">Dữ liệu 15 ngày gần nhất</div>
+        <h3 style="font-size: 1.1rem; margin-bottom: 4px;">Thống kê lưu lượng xe</h3>
+        <div class="small muted">
+            {% if stats.period == 'today' %}Dữ liệu hôm nay
+            {% elif stats.period == '7days' %}Dữ liệu 7 ngày qua
+            {% elif stats.period == '30days' %}Dữ liệu 30 ngày qua
+            {% else %}Dữ liệu 30 ngày gần nhất{% endif %}
+        </div>
     </div>
     <div style="position: relative; height: 260px; width: 100%;">
         <canvas id="vehicleChart"></canvas>
@@ -159,7 +192,18 @@
                         <tr>
                             <td><strong style="color: var(--brand-blue);">{{ v.license_plate or 'N/A' }}</strong></td>
                             <td>{{ v.camera_name or 'N/A' }}</td>
-                            <td class="muted">{{ v.time.split('T')[1][:5] if v.time and 'T' in v.time else (v.time[:5] if v.time else 'N/A') }}</td>
+                            <td class="muted">
+                                {% if v.time %}
+                                    {% set parts = v.time.split('T') %}
+                                    {% if parts|length > 1 %}
+                                        {{ parts[1][:5] }} {{ parts[0].split('-')[2] }}/{{ parts[0].split('-')[1] }}
+                                    {% else %}
+                                        {{ v.time[:16] }}
+                                    {% endif %}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     {% else %}
@@ -175,8 +219,27 @@
         <div class="panel-header" style="margin-bottom: 12px;">
             <h3 style="font-size: 1.1rem;">Tỷ lệ phương tiện</h3>
         </div>
-        <div style="position: relative; height: 180px; width: 100%; display: flex; justify-content: center;">
+        <div style="position: relative; height: 180px; width: 100%; display: flex; justify-content: center; margin-bottom: 16px;">
             <canvas id="typePieChart"></canvas>
+        </div>
+        
+        <!-- Danh sách số lượng xe chi tiết -->
+        <div id="vehicle-type-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            {% if stats and stats.vehicle_distribution %}
+                {% set type_map = {'car': 'Ô tô', 'truck': 'Xe tải', 'bus': 'Xe khách', 'motorcycle': 'Xe máy', 'bicycle': 'Xe đạp'} %}
+                {% set colors = ['#2563eb', '#06b6d4', '#10b981', '#f59e0b', '#f43f5e'] %}
+                {% for item in stats.vehicle_distribution %}
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(0,0,0,0.02); border-radius: 4px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span class="type-dot dot-{{ loop.index0 % 5 }}"></span>
+                            <span class="small muted">{{ type_map[item.type] or item.type }}</span>
+                        </div>
+                        <span class="small strong">{{ item.count }}</span>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="small muted center" style="grid-column: span 2;">Chưa có dữ liệu phân loại</div>
+            {% endif %}
         </div>
     </section>
 </div>
