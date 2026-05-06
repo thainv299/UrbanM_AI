@@ -121,7 +121,7 @@ def create_app() -> FastAPI:
         # 0. Dọn dẹp CSDL định kỳ
         from backend.database.sqlite_db import cleanup_old_data
         try:
-            cleanup_old_data(days_to_keep=30)
+            cleanup_old_data(days_to_keep=90)
         except Exception as e:
             print(f"[Database] Lỗi dọn dẹp định kỳ: {e}")
 

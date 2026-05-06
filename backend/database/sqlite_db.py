@@ -13,33 +13,47 @@ def connect() -> sqlite3.Connection:
     return connection
 
 
-def cleanup_old_data(days_to_keep: int = 30) -> None:
-    """Xóa dữ liệu lịch sử cũ hơn N ngày để tránh phình CSDL (Giải pháp A)"""
+def cleanup_old_data(days_to_keep: int = 90) -> None:
+    """Xóa dữ liệu lịch sử cũ hơn N ngày để tránh phình CSDL (Mặc định 3 tháng)"""
     from datetime import datetime, timedelta
-    cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).strftime("%Y-%m-%d %H:%M:%S")
+    # Định dạng ISO cho các bảng lịch sử chi tiết
+    cutoff_datetime = (datetime.now() - timedelta(days=days_to_keep)).strftime("%Y-%m-%d %H:%M:%S")
+    # Định dạng ngày (YYYY-MM-DD) cho bảng thống kê gộp
+    cutoff_date_only = (datetime.now() - timedelta(days=days_to_keep)).strftime("%Y-%m-%d")
     
-    print(f"[Database] Đang dọn dẹp dữ liệu cũ hơn ngày: {cutoff_date}...")
+    print(f"[Database] Đang dọn dẹp dữ liệu cũ hơn {days_to_keep} ngày...")
     try:
         with connect() as connection:
-            # Xóa lịch sử phương tiện chi tiết
+            # 1. Xóa lịch sử phương tiện chi tiết
             connection.execute(
                 "DELETE FROM lich_su_phuong_tien WHERE thoi_gian_di_qua < ?",
-                (cutoff_date,)
+                (cutoff_datetime,)
             )
-            # Xóa lịch sử biển số nếu cần
+            # 2. Xóa lịch sử biển số
             connection.execute(
                 "DELETE FROM bien_so_phat_hien WHERE ngay_tao < ?",
-                (cutoff_date,)
+                (cutoff_datetime,)
             )
+            # 3. Xóa vi phạm đỗ xe cũ
+            connection.execute(
+                "DELETE FROM vi_pham_do_xe WHERE thoi_gian_vi_pham < ?",
+                (cutoff_datetime,)
+            )
+            # 4. Xóa thống kê gộp cũ (Để đồng nhất biểu đồ)
+            connection.execute(
+                "DELETE FROM thong_ke_giao_thong WHERE ngay_ghi_nhan < ?",
+                (cutoff_date_only,)
+            )
+            
             connection.commit()
             
-        # VACUUM phải chạy ngoài transaction
+        # VACUUM để thu hồi dung lượng đĩa
         conn = sqlite3.connect(DATABASE_PATH)
         conn.execute("VACUUM")
         conn.close()
-        print("[Database] Đã dọn dẹp và nén CSDL thành công.")
+        print(f"[Database] Đã dọn dẹp toàn bộ dữ liệu cũ hơn {days_to_keep} ngày và nén CSDL thành công.")
     except Exception as e:
-        print(f"[Database] Lỗi dọn dẹp: {e}")
+        print(f"[Database] Lỗi trong quá trình dọn dẹp định kỳ: {e}")
 
 
 def delete_license_plate_record(record_id: int) -> bool:
@@ -232,24 +246,7 @@ def init_db() -> None:
         connection.commit()
 
 
-def get_total_vehicle_count(start_date: str = None, end_date: str = None) -> int:
-    """Lấy tổng số xe đi qua trong khoảng thời gian"""
-    query = "SELECT SUM(so_luong_xe) as total FROM thong_ke_giao_thong"
-    params = []
-    
-    if start_date or end_date:
-        conditions = []
-        if start_date:
-            conditions.append("ngay_ghi_nhan >= ?")
-            params.append(start_date)
-        if end_date:
-            conditions.append("ngay_ghi_nhan <= ?")
-            params.append(end_date)
-        query += " WHERE " + " AND ".join(conditions)
-        
-    with connect() as connection:
-        row = connection.execute(query, params).fetchone()
-    return int(row["total"]) if row["total"] else 0
+
 
 
 def get_illegal_parking_violations() -> list:
@@ -333,20 +330,26 @@ def get_congestion_history() -> list:
         ).fetchall()
     return [dict(row) for row in rows]
 
-def get_daily_vehicle_stats(limit: int = 30) -> list:
-    """Lấy thống kê lưu lượng xe hàng ngày"""
+def get_daily_vehicle_stats(start_date: str = None, end_date: str = None, limit: int = 30) -> list:
+    """Lấy thống kê lưu lượng xe hàng ngày, có hỗ trợ lọc theo khoảng thời gian"""
+    query = "SELECT ngay_ghi_nhan as date, SUM(so_luong_xe) as count FROM thong_ke_giao_thong"
+    params = []
+    
+    if start_date or end_date:
+        conditions = []
+        if start_date:
+            conditions.append("ngay_ghi_nhan >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("ngay_ghi_nhan <= ?")
+            params.append(end_date)
+        query += " WHERE " + " AND ".join(conditions)
+    
+    query += " GROUP BY ngay_ghi_nhan ORDER BY ngay_ghi_nhan DESC LIMIT ?"
+    params.append(limit)
+    
     with connect() as connection:
-        rows = connection.execute(
-            """
-            SELECT ngay_ghi_nhan as date, SUM(so_luong_xe) as count
-            FROM thong_ke_giao_thong
-            GROUP BY ngay_ghi_nhan
-            ORDER BY ngay_ghi_nhan DESC
-            LIMIT ?
-            """,
-            (limit,)
-        ).fetchall()
-    # Đảo ngược để hiển thị từ cũ đến mới trên chart
+        rows = connection.execute(query, params).fetchall()
     return [dict(row) for row in reversed(rows)]
 
 def get_latest_violations(limit: int = 5) -> list:
@@ -365,26 +368,50 @@ def get_latest_violations(limit: int = 5) -> list:
         ).fetchall()
     return [dict(row) for row in rows]
 
-def get_vehicle_type_distribution() -> list:
-    """Lấy tỷ lệ các loại phương tiện (loại bỏ person)"""
+def get_total_vehicle_count(start_date: str = None, end_date: str = None) -> int:
+    """Lấy tổng số xe đi qua trực tiếp từ bảng lịch sử (loại bỏ person và license_plate)"""
+    query = "SELECT COUNT(*) as total FROM lich_su_phuong_tien WHERE loai_xe NOT IN ('person', 'license_plate')"
+    params = []
+    
+    if start_date or end_date:
+        if start_date:
+            query += " AND thoi_gian_di_qua >= ?"
+            params.append(f"{start_date} 00:00:00")
+        if end_date:
+            query += " AND thoi_gian_di_qua <= ?"
+            params.append(f"{end_date} 23:59:59")
+        
     with connect() as connection:
-        rows = connection.execute(
-            """
-            SELECT loai_xe as type, COUNT(*) as count
-            FROM lich_su_phuong_tien
-            WHERE loai_xe != 'person'
-            GROUP BY loai_xe
-            ORDER BY count DESC
-            """
-        ).fetchall()
+        row = connection.execute(query, params).fetchone()
+    return int(row["total"]) if row["total"] else 0
+
+def get_vehicle_type_distribution(start_date: str = None, end_date: str = None) -> list:
+    """Lấy tỷ lệ các loại phương tiện trong khoảng thời gian xác định (loại bỏ person và license_plate)"""
+    query = "SELECT loai_xe as type, COUNT(*) as count FROM lich_su_phuong_tien WHERE loai_xe NOT IN ('person', 'license_plate')"
+    params = []
+    
+    if start_date or end_date:
+        if start_date:
+            query += " AND thoi_gian_di_qua >= ?"
+            params.append(f"{start_date} 00:00:00")
+        if end_date:
+            query += " AND thoi_gian_di_qua <= ?"
+            params.append(f"{end_date} 23:59:59")
+    
+    query += " GROUP BY loai_xe ORDER BY count DESC"
+    
+    with connect() as connection:
+        rows = connection.execute(query, params).fetchall()
     return [dict(row) for row in rows]
 
 
-def log_vehicle_count(camera_id: int, count: int, recorded_date: str = None) -> None:
-    """Ghi lại số xe đi qua (Cộng dồn vào số hiện tại của ngày)"""
+def log_vehicle_count(camera_id: int, vehicle_type: str, count: int = 1) -> None:
+    """Ghi nhận số lượng xe theo loại và ngày (loại bỏ người và biển số)"""
+    if vehicle_type in ['person', 'license_plate']:
+        return
+        
     from datetime import datetime
-    if recorded_date is None:
-        recorded_date = datetime.now().strftime("%Y-%m-%d")
+    recorded_date = datetime.now().strftime("%Y-%m-%d")
     
     with connect() as connection:
         connection.execute(
