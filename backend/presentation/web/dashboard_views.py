@@ -16,7 +16,7 @@ async def index(request: Request):
 
 
 @dashboard_router.get("/dashboard", name="dashboard.dashboard_page")
-async def dashboard_page(request: Request, user=Depends(login_required)):
+async def dashboard_page(request: Request, period: str = "all", user=Depends(login_required)):
     if isinstance(user, RedirectResponse):
         return user
         
@@ -25,17 +25,17 @@ async def dashboard_page(request: Request, user=Depends(login_required)):
         "dashboard.html",
         {
             "page": "dashboard",
-            "stats": container.dashboard_use_cases.get_dashboard_stats(),
+            "stats": container.dashboard_use_cases.get_dashboard_stats(period),
         }
     )
 
 
 
 @dashboard_router.get("/api/dashboard")
-async def api_dashboard(user=Depends(login_required)):
+async def api_dashboard(period: str = "all", user=Depends(login_required)):
     if isinstance(user, RedirectResponse):
         return user
-    return {"ok": True, "stats": container.dashboard_use_cases.get_dashboard_stats()}
+    return {"ok": True, "stats": container.dashboard_use_cases.get_dashboard_stats(period)}
 
 @dashboard_router.get("/settings", response_class=HTMLResponse, name="dashboard.settings_page")
 async def settings_page(request: Request, user=Depends(login_required)):

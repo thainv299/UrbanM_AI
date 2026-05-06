@@ -14,8 +14,15 @@
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
     <h2 class="page-title" style="margin-bottom: 0; font-size: 1.8rem;">Dashboard</h2>
 
-    <!-- Quick Actions -->
-    <div style="display: flex; gap: 12px;">
+    <!-- Filter & Quick Actions -->
+    <div style="display: flex; gap: 12px; align-items: center;">
+        <select class="field" id="dashboard-period-filter" style="width: auto; padding: 8px 16px; margin-bottom: 0; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--r-md); cursor: pointer;">
+            <option value="all" {% if stats and stats.period == 'all' %}selected{% endif %}>Tất cả thời gian</option>
+            <option value="today" {% if stats and stats.period == 'today' %}selected{% endif %}>Hôm nay</option>
+            <option value="7days" {% if stats and stats.period == '7days' %}selected{% endif %}>7 ngày qua</option>
+            <option value="30days" {% if stats and stats.period == '30days' %}selected{% endif %}>30 ngày qua</option>
+        </select>
+
         <a href="{{ url_for('cameras.cameras_page') }}" class="button secondary">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round">
@@ -34,6 +41,15 @@
         </a>
     </div>
 </div>
+
+<script>
+    document.getElementById('dashboard-period-filter').addEventListener('change', function() {
+        const period = this.value;
+        const url = new URL(window.location.href);
+        url.searchParams.set('period', period);
+        window.location.href = url.toString();
+    });
+</script>
 
 <!-- Stats -->
 <section class="stats-grid" style="margin-bottom: 16px; gap: 16px;">
@@ -86,7 +102,7 @@
                 </svg>
             </div>
         </div>
-        <div class="stat-value">{{ stats.parking_violations|length if stats and stats.parking_violations else '0' }}
+        <div class="stat-value">{{ stats.parking_violation_count if stats and stats.parking_violation_count is not none else '0' }}
         </div>
         <div class="stat-bottom"><span class="trend down">!</span> Cảnh báo vi phạm</div>
     </div>
