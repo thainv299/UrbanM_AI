@@ -466,9 +466,13 @@ document.addEventListener("DOMContentLoaded", () => {
                         </div>
                     </td>
                     <td style="text-align: center;">
-                        <span class="badge ${camera.is_active ? "success" : "muted"}" style="font-size: 0.7rem; padding: 2px 8px;">
-                            ${camera.is_active ? "Hoạt động" : "Đang tắt"}
-                        </span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" data-action="toggle-active" data-id="${camera.id}" ${camera.is_active ? "checked" : ""}>
+                            <span class="slider"></span>
+                        </label>
+                        <div style="font-size: 0.65rem; margin-top: 4px; font-weight: 600; color: ${camera.is_active ? 'var(--success)' : 'var(--text-subtle)'}">
+                            ${camera.is_active ? "Đang chạy" : "Đã tắt"}
+                        </div>
                     </td>
                     <td>
                         <div style="display: flex; gap: 6px; justify-content: center;">
@@ -513,6 +517,27 @@ document.addEventListener("DOMContentLoaded", () => {
             window.portalApi.showNotice(feedback, error.message, "error");
         }
     }
+
+    tableBody.addEventListener("change", async (event) => {
+        const toggle = event.target.closest("input[data-action='toggle-active']");
+        if (!toggle) return;
+
+        const cameraId = Number(toggle.dataset.id);
+        const camera = state.cameras.find((item) => item.id === cameraId);
+        if (!camera) return;
+
+        const newValue = toggle.checked;
+        const payload = { ...camera, is_active: newValue };
+
+        try {
+            await window.portalApi.put(`/api/cameras/${cameraId}`, payload);
+            await loadCameras();
+            window.portalApi.showToast(`${newValue ? 'Đã bật' : 'Đã tắt'} camera ${camera.name}`, "success");
+        } catch (error) {
+            toggle.checked = !newValue; // Hoàn tác nếu lỗi
+            window.portalApi.showNotice(feedback, error.message, "error");
+        }
+    });
 
     tableBody.addEventListener("click", async (event) => {
         const button = event.target.closest("button[data-action]");

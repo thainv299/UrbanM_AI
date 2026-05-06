@@ -784,27 +784,40 @@ def process_video(
                         if box_color_p is not None:
                             box_color = box_color_p
 
-                    # 4. Lưu phương tiện đi qua (Chỉ lưu các loại xe trong VEHICLE_LABELS)
-                    if track_id != -1 and track_id not in logged_vehicle_ids and label in VEHICLE_LABELS:
-                        io_worker.enqueue_db_write(log_passed_vehicle, args=(camera_id, f"ID_{track_id}", label))
-                        logged_vehicle_ids.add(track_id)
-                        unique_passed_count += 1
-                        
-                        # Khởi tạo theo dõi ALPR cho các loại xe car/truck/bus
-                        if label in VEHICLE_LOG_LABELS:
+                    # 4. Quản lý theo dõi ALPR và Log phương tiện (Đợi xe ổn định mới lưu)
+                    if track_id != -1 and label in VEHICLE_LOG_LABELS:
+                        if track_id not in pending_alpr_tracks:
+                            # Khởi tạo theo dõi cho xe mới
                             pending_alpr_tracks[track_id] = {
                                 "last_seen": frame_index,
                                 "best_image": (clean_frame.copy(), (x1, y1, x2, y2)),
-                                "seen_count": 1
+                                "seen_count": 1,
+                                "is_passed_logged": False, # Đã ghi log 'Xe đi qua' chưa
+                                "missing_frames": 0
                             }
-
-                    # Cập nhật ảnh tốt nhất cho xe đang chờ ALPR
-                    if track_id in pending_alpr_tracks:
-                        pending_alpr_tracks[track_id]["last_seen"] = frame_index
-                        # Cập nhật nếu box to hơn (gần camera hơn)
-                        old_w = pending_alpr_tracks[track_id]["best_image"][1][2] - pending_alpr_tracks[track_id]["best_image"][1][0]
-                        if (x2 - x1) > old_w:
-                            pending_alpr_tracks[track_id]["best_image"] = (clean_frame.copy(), (x1, y1, x2, y2))
+                        else:
+                            # Cập nhật thông tin xe đang theo dõi
+                            pending_alpr_tracks[track_id]["last_seen"] = frame_index
+                            pending_alpr_tracks[track_id]["seen_count"] += 1
+                            pending_alpr_tracks[track_id]["missing_frames"] = 0
+                            
+                            # Cập nhật ảnh tốt nhất (Lấy lúc xe to nhất)
+                            old_w = pending_alpr_tracks[track_id]["best_image"][1][2] - pending_alpr_tracks[track_id]["best_image"][1][0]
+                            if (x2 - x1) > old_w:
+                                pending_alpr_tracks[track_id]["best_image"] = (clean_frame.copy(), (x1, y1, x2, y2))
+                            
+                            # XÁC MINH XE MỚI: Chỉ lưu vào DB sau khi đã thấy xe ổn định (> 30 frames ~ 1s)
+                            if not pending_alpr_tracks[track_id]["is_passed_logged"] and pending_alpr_tracks[track_id]["seen_count"] > 30:
+                                # 1. Ghi vào bảng lịch sử phương tiện
+                                io_worker.enqueue_db_write(log_passed_vehicle, args=(camera_id, f"ID_{track_id}", label))
+                                
+                                # 2. Cập nhật bảng thống kê lưu lượng (Để vẽ biểu đồ)
+                                from database.sqlite_db import log_vehicle_count
+                                io_worker.enqueue_db_write(log_vehicle_count, args=(camera_id, 1))
+                                
+                                logged_vehicle_ids.add(track_id)
+                                unique_passed_count += 1
+                                pending_alpr_tracks[track_id]["is_passed_logged"] = True
 
                     # 5. Vẽ nhãn lên frame
                     cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, f_thick)
@@ -817,38 +830,23 @@ def process_video(
                     text_color = (0, 0, 0) if brightness > 165 else (255, 255, 255)
                     cv2.putText(frame, display_label, (x1 + 5, text_y), cv2.FONT_HERSHEY_SIMPLEX, f_scale, text_color, f_thick)
 
-            # --- LOGIC CHỐT DỮ LIỆU NGAY LẬP TỨC KHI XE BIẾN MẤT ---
-            current_track_ids = set()
-            if last_results:
-                for res in last_results:
-                    for box in res.boxes:
-                        if box.id is not None:
-                            tid = int(box.id)
-                            current_track_ids.add(tid)
-                            
-                            # Cập nhật thông tin cho các xe car/truck/bus đang theo dõi
-                            if tid in pending_alpr_tracks:
-                                bx1, by1, bx2, by2 = map(int, box.xyxy[0])
-                                pending_alpr_tracks[tid]["last_seen"] = frame_index
-                                pending_alpr_tracks[tid]["seen_count"] += 1
-                                
-                                # Lưu lại ảnh tốt nhất (khi xe to nhất/rõ nhất)
-                                old_w = pending_alpr_tracks[tid]["best_image"][1][2] - pending_alpr_tracks[tid]["best_image"][1][0]
-                                if (bx2 - bx1) > old_w:
-                                    pending_alpr_tracks[tid]["best_image"] = (clean_frame.copy(), (bx1, by1, bx2, by2))
-
-            # Kiểm tra các xe đã biến mất hoàn toàn khỏi khung hình
+            # --- LOGIC DỌN DẸP VÀ CHỐT LOG (VỚI THỜI GIAN ĐỢI RE-ID) ---
+            current_track_ids = {int(box.id) for res in last_results for box in res.boxes if box.id is not None} if last_results else set()
+            
             for tid in list(pending_alpr_tracks.keys()):
                 if tid not in current_track_ids:
-                    # XE ĐÃ BIẾN MẤT -> CHỐT TRẠNG THÁI LUÔN
-                    # Chỉ ghi log nếu xe đã xuất hiện đủ lâu (ví dụ > 20 frames) để tránh rác
-                    if pending_alpr_tracks[tid]["seen_count"] > 20:
-                        if tid not in alpr_logger.logged_v_tracks:
-                            best_f, best_box = pending_alpr_tracks[tid]["best_image"]
-                            alpr_logger.log_vehicle_without_plate(frame_index, best_f, best_box)
+                    # Xe tạm thời mất dấu
+                    pending_alpr_tracks[tid]["missing_frames"] += 1
                     
-                    # Xóa khỏi bộ nhớ theo dõi
-                    del pending_alpr_tracks[tid]
+                    # Chỉ chốt log sau khi đã mất dấu > 45 frames (~1.5 giây) để đợi RE-ID
+                    if pending_alpr_tracks[tid]["missing_frames"] > 45:
+                        # Chỉ ghi log nếu xe đã từng xuất hiện ổn định (đã được log 'Xe đi qua')
+                        if pending_alpr_tracks[tid]["is_passed_logged"]:
+                            if tid not in alpr_logger.logged_v_tracks:
+                                best_f, best_box = pending_alpr_tracks[tid]["best_image"]
+                                alpr_logger.log_vehicle_without_plate(frame_index, best_f, best_box)
+                        
+                        del pending_alpr_tracks[tid]
 
             # Cập nhật Traffic Monitor
             if traffic_monitor is not None:

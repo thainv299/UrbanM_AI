@@ -133,11 +133,11 @@ async def api_update_camera(camera_id: int, payload: Dict[str, Any], user=Depend
         
         updated = container.camera_use_cases.update_camera(camera_id, payload)
         
-        # Đồng bộ luồng AI nền
-        if is_active_requested is False:
-            container.job_use_cases.stop_camera_jobs(camera_id)
-        elif is_active_requested is True:
-            # Khởi động lại nếu chưa chạy
+        # Đồng bộ luồng AI: Luôn dừng job cũ để áp dụng cấu hình mới nhất
+        container.job_use_cases.stop_camera_jobs(camera_id)
+        
+        # Nếu camera đang ở trạng thái hoạt động, khởi động lại luồng nền
+        if updated.is_active:
             container.job_use_cases.start_active_cameras(container.camera_use_cases)
             
         return {"ok": True, "camera": updated.to_dict()}

@@ -33,17 +33,19 @@ class JobUseCases:
         """Dừng tất cả các job (nền hoặc test) liên quan đến camera_id này"""
         with self.job_lock:
             to_stop = []
+            target_id_str = str(camera_id)
             for job_id, job in self.jobs.items():
-                if job.camera_id == camera_id and job.status in {"queued", "running"}:
+                # So sánh string để tránh lệch kiểu dữ liệu int/str
+                if str(job.camera_id) == target_id_str and job.status in {"queued", "running"}:
                     to_stop.append(job_id)
             
             for jid in to_stop:
                 job = self.jobs[jid]
                 job.status = "aborted"
-                job.message = "Đã dừng task do camera bị tắt."
+                job.message = "Hệ thống đã dừng tác vụ AI cho camera này."
                 if jid in self.pause_events:
                     self.pause_events[jid].clear()
-                print(f"[System] Đã dừng job {jid} cho camera {camera_id}")
+                print(f"[System] Đã dừng job {jid} cho camera {camera_id} thành công.")
 
     def get_job(self, job_id: str) -> Optional[Job]:
         with self.job_lock:
