@@ -118,6 +118,13 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup_event():
+        # 0. Dọn dẹp CSDL định kỳ
+        from backend.database.sqlite_db import cleanup_old_data
+        try:
+            cleanup_old_data(days_to_keep=30)
+        except Exception as e:
+            print(f"[Database] Lỗi dọn dẹp định kỳ: {e}")
+
         # Khởi động các camera active ngay khi server chạy
         print("[System] Khởi động luồng xử lý camera nền...")
         container.job_use_cases.start_active_cameras(container.camera_use_cases)

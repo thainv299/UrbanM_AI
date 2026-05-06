@@ -10,6 +10,9 @@ from database.sqlite_db import (
     get_system_settings,
     update_system_settings,
     global_search,
+    get_daily_vehicle_stats,
+    get_latest_violations,
+    get_vehicle_type_distribution,
 )
 
 
@@ -22,14 +25,17 @@ class DashboardUseCases:
         from datetime import datetime, timedelta
         
         start_date = None
-        end_date = datetime.now().strftime("%Y-%m-%d")
+        end_date = None
         
         if period == "today":
-            start_date = end_date
+            start_date = datetime.now().strftime("%Y-%m-%d")
+            end_date = start_date
         elif period == "7days":
             start_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+            end_date = datetime.now().strftime("%Y-%m-%d")
         elif period == "30days":
             start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            end_date = datetime.now().strftime("%Y-%m-%d")
             
         users = self.user_repo.list_all()
         cameras = self.camera_repo.list_all()
@@ -41,6 +47,11 @@ class DashboardUseCases:
         total_vehicles = get_total_vehicle_count(start_date, end_date)
         parking_violation_count = get_illegal_parking_count(start_date, end_date)
         congestion_count = get_congestion_count(start_date, end_date)
+        
+        # Thống kê nâng cao cho UI mới
+        daily_stats = get_daily_vehicle_stats(limit=15)
+        latest_violations = get_latest_violations(limit=5)
+        vehicle_distribution = get_vehicle_type_distribution()
 
         return {
             "user_count": len(users),
@@ -53,7 +64,10 @@ class DashboardUseCases:
             "total_vehicles": total_vehicles,
             "parking_violation_count": parking_violation_count,
             "congestion_count": congestion_count,
-            "period": period
+            "period": period,
+            "daily_stats": daily_stats,
+            "latest_violations": latest_violations,
+            "vehicle_distribution": vehicle_distribution
         }
 
     def get_settings(self) -> Dict[str, Any]:

@@ -121,6 +121,7 @@
                         <th style="text-align: center;">Ngày</th>
                         <th style="text-align: center;">Giờ</th>
                         <th style="text-align: center;">Ảnh Xem Lại</th>
+                        <th style="text-align: center; width: 120px;">Hành động</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -145,6 +146,11 @@
                                     </a>
                                 ` : '<span class="badge muted">Không có ảnh</span>'}
                             </td>
+                            <td style="text-align: center;">
+                                <button class="button danger outline sm" onclick="deletePlate(${plate.id})" title="Xóa bản ghi rác">
+                                    <span class="icon">🗑️</span> Xóa
+                                </button>
+                            </td>
                         </tr>
                         `;
         }).join('')}
@@ -152,6 +158,28 @@
             </table>
         </div>
     `;
+    }
+
+    async function deletePlate(id) {
+        if (!confirm('Bạn có chắc chắn muốn xóa bản ghi này?')) return;
+
+        try {
+            const response = await portalApi.delete(`/api/vehicles/${id}`);
+            if (response.ok) {
+                portalApi.showToast('Đã xóa bản ghi thành công', 'success', 'Thông báo');
+                // Reload danh sách hiện tại
+                const date = document.getElementById('filterDate').value;
+                if (date) {
+                    filterByDate();
+                } else {
+                    loadLatestPlates();
+                }
+            } else {
+                portalApi.showToast('Không thể xóa bản ghi', 'error', 'Lỗi');
+            }
+        } catch (error) {
+            portalApi.showToast('Lỗi khi xóa: ' + error.message, 'error', 'Lỗi');
+        }
     }
 
     // Load dữ liệu khi trang mở

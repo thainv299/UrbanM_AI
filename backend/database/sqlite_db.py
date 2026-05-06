@@ -13,6 +13,76 @@ def connect() -> sqlite3.Connection:
     return connection
 
 
+def cleanup_old_data(days_to_keep: int = 30) -> None:
+    """Xóa dữ liệu lịch sử cũ hơn N ngày để tránh phình CSDL (Giải pháp A)"""
+    from datetime import datetime, timedelta
+    cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).strftime("%Y-%m-%d %H:%M:%S")
+    
+    print(f"[Database] Đang dọn dẹp dữ liệu cũ hơn ngày: {cutoff_date}...")
+    try:
+        with connect() as connection:
+            # Xóa lịch sử phương tiện chi tiết
+            connection.execute(
+                "DELETE FROM lich_su_phuong_tien WHERE thoi_gian_di_qua < ?",
+                (cutoff_date,)
+            )
+            # Xóa lịch sử biển số nếu cần
+            connection.execute(
+                "DELETE FROM bien_so_phat_hien WHERE ngay_tao < ?",
+                (cutoff_date,)
+            )
+            connection.commit()
+            
+        # VACUUM phải chạy ngoài transaction
+        conn = sqlite3.connect(DATABASE_PATH)
+        conn.execute("VACUUM")
+        conn.close()
+        print("[Database] Đã dọn dẹp và nén CSDL thành công.")
+    except Exception as e:
+        print(f"[Database] Lỗi dọn dẹp: {e}")
+
+
+def delete_license_plate_record(record_id: int) -> bool:
+    """Xóa một bản ghi biển số/phương tiện theo ID và xóa cả ảnh trên đĩa"""
+    import os
+    from pathlib import Path
+    try:
+        # 1. Lấy đường dẫn ảnh trước khi xóa bản ghi
+        image_paths = None
+        with connect() as connection:
+            row = connection.execute("SELECT duong_dan_anh FROM bien_so_phat_hien WHERE id = ?", (record_id,)).fetchone()
+            if row:
+                image_paths = row["duong_dan_anh"]
+        
+        # 2. Xóa ảnh vật lý trên đĩa
+        if image_paths:
+            # image_paths có thể là chuỗi phân tách bởi dấu phẩy
+            paths = image_paths.split(',')
+            for p in paths:
+                p = p.strip()
+                if not p: continue
+                # Chuyển đổi đường dẫn web (logs/plates/...) thành đường dẫn vật lý
+                # logs/plates/2026/05/06/... -> logs/plates/2026/05/06/...
+                # PROJECT_ROOT được định nghĩa ở trên là backend/
+                # Nhưng thực tế logs/ nằm ở project root.
+                full_path = Path(p)
+                if full_path.exists():
+                    try:
+                        os.remove(full_path)
+                        print(f"[Database] Đã xóa ảnh: {full_path}")
+                    except Exception as e:
+                        print(f"[Database] Không thể xóa file {full_path}: {e}")
+
+        # 3. Xóa bản ghi trong DB
+        with connect() as connection:
+            connection.execute("DELETE FROM bien_so_phat_hien WHERE id = ?", (record_id,))
+            connection.commit()
+            return True
+    except Exception as e:
+        print(f"[Database] Lỗi khi xóa bản ghi {record_id}: {e}")
+        return False
+
+
 def init_db() -> None:
     """Khởi tạo cấu trúc bảng nếu chưa có"""
     with connect() as connection:
@@ -263,9 +333,55 @@ def get_congestion_history() -> list:
         ).fetchall()
     return [dict(row) for row in rows]
 
+def get_daily_vehicle_stats(limit: int = 30) -> list:
+    """Lấy thống kê lưu lượng xe hàng ngày"""
+    with connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT ngay_ghi_nhan as date, SUM(so_luong_xe) as count
+            FROM thong_ke_giao_thong
+            GROUP BY ngay_ghi_nhan
+            ORDER BY ngay_ghi_nhan DESC
+            LIMIT ?
+            """,
+            (limit,)
+        ).fetchall()
+    # Đảo ngược để hiển thị từ cũ đến mới trên chart
+    return [dict(row) for row in reversed(rows)]
+
+def get_latest_violations(limit: int = 5) -> list:
+    """Lấy danh sách vi phạm mới nhất"""
+    with connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT pv.id, pv.bien_so as license_plate, pv.thoi_gian_vi_pham as time, 
+                   c.ten_camera as camera_name
+            FROM vi_pham_do_xe pv
+            LEFT JOIN camera c ON pv.id_camera = c.id
+            ORDER BY pv.thoi_gian_vi_pham DESC
+            LIMIT ?
+            """,
+            (limit,)
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+def get_vehicle_type_distribution() -> list:
+    """Lấy tỷ lệ các loại phương tiện (loại bỏ person)"""
+    with connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT loai_xe as type, COUNT(*) as count
+            FROM lich_su_phuong_tien
+            WHERE loai_xe != 'person'
+            GROUP BY loai_xe
+            ORDER BY count DESC
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
+
 
 def log_vehicle_count(camera_id: int, count: int, recorded_date: str = None) -> None:
-    """Ghi lại số xe đi qua"""
+    """Ghi lại số xe đi qua (Cộng dồn vào số hiện tại của ngày)"""
     from datetime import datetime
     if recorded_date is None:
         recorded_date = datetime.now().strftime("%Y-%m-%d")
@@ -273,8 +389,10 @@ def log_vehicle_count(camera_id: int, count: int, recorded_date: str = None) -> 
     with connect() as connection:
         connection.execute(
             """
-            INSERT OR REPLACE INTO thong_ke_giao_thong (id_camera, so_luong_xe, ngay_ghi_nhan)
+            INSERT INTO thong_ke_giao_thong (id_camera, so_luong_xe, ngay_ghi_nhan)
             VALUES (?, ?, ?)
+            ON CONFLICT(id_camera, ngay_ghi_nhan) 
+            DO UPDATE SET so_luong_xe = so_luong_xe + EXCLUDED.so_luong_xe
             """,
             (camera_id, count, recorded_date)
         )
@@ -349,19 +467,23 @@ def update_congestion_end_time(congestion_id: int, end_time: str = None) -> None
             connection.commit()
 
 
-def log_passed_vehicle(camera_id: int, bien_so_xe: str, loai_xe: str, thoi_gian_di_qua: str = None) -> None:
-    """Ghi lại lịch sử phương tiện đi qua"""
+def log_passed_vehicle(camera_id: int, bien_so_xe: str, loai_xe: str, thoi_gian_di_qua: str = None, duong_dan_anh: str = None) -> None:
+    """Ghi lại lịch sử phương tiện đi qua có kèm ảnh"""
     from datetime import datetime
     if thoi_gian_di_qua is None:
         thoi_gian_di_qua = datetime.now().isoformat()
     
+    # Chuẩn hóa đường dẫn ảnh
+    if duong_dan_anh:
+        duong_dan_anh = duong_dan_anh.replace("\\", "/").replace("runtime/vehicles/", "logs/vehicles/")
+        
     with connect() as connection:
         connection.execute(
             """
-            INSERT INTO lich_su_phuong_tien (id_camera, bien_so_xe, loai_xe, thoi_gian_di_qua)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO lich_su_phuong_tien (id_camera, bien_so_xe, loai_xe, thoi_gian_di_qua, duong_dan_anh)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (camera_id, bien_so_xe, loai_xe, thoi_gian_di_qua)
+            (camera_id, bien_so_xe, loai_xe, thoi_gian_di_qua, duong_dan_anh)
         )
         connection.commit()
 
@@ -398,7 +520,7 @@ def get_detected_license_plates(limit: int = 100) -> list:
     with connect() as connection:
         rows = connection.execute(
             """
-            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time, 
+            SELECT id, bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time, 
                    so_lan_phat_hien as detection_count, do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
             FROM bien_so_phat_hien
             ORDER BY ngay_phat_hien DESC, thoi_gian_phat_hien DESC
@@ -414,7 +536,7 @@ def get_license_plate_by_date(detected_date: str) -> list:
     with connect() as connection:
         rows = connection.execute(
             """
-            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time,
+            SELECT id, bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time,
                    so_lan_phat_hien as detection_count, do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
             FROM bien_so_phat_hien
             WHERE ngay_phat_hien = ?
