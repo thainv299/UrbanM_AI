@@ -172,26 +172,35 @@ function initTestVideoForm() {
     }
 
     // ── QUALITY SETTINGS ────────────────────────────────────
-    const qualityGearBtn = document.getElementById("quality-gear-btn");
-    const qualityMenu = document.getElementById("quality-menu");
-    const qualityOptions = document.querySelectorAll(".quality-option");
+    const setupQualitySettings = () => {
+        const qualityGearBtn = document.getElementById("quality-gear-btn");
+        const qualityMenu = document.getElementById("quality-menu");
+        const qualityOptions = document.querySelectorAll(".quality-option");
 
-    if (qualityGearBtn && qualityMenu) {
+        if (!qualityGearBtn || !qualityMenu) {
+            console.warn("[UI] Không tìm thấy nút cài đặt chất lượng.");
+            return;
+        }
+
         qualityGearBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            qualityMenu.style.display = qualityMenu.style.display === "none" ? "flex" : "none";
+            const isHidden = qualityMenu.style.display === "none";
+            qualityMenu.style.display = isHidden ? "flex" : "none";
         });
 
         // Đóng menu khi click ra ngoài
         document.addEventListener("click", () => {
-            qualityMenu.style.display = "none";
+            if (qualityMenu) qualityMenu.style.display = "none";
         });
 
         qualityMenu.addEventListener("click", (e) => e.stopPropagation());
 
         qualityOptions.forEach(opt => {
             opt.addEventListener("click", async () => {
-                if (!currentJobId) return;
+                if (!currentJobId) {
+                    window.portalApi.showToast("Vui lòng khởi động camera trước", "warning");
+                    return;
+                }
                 const quality = opt.dataset.quality;
                 
                 try {
@@ -202,13 +211,16 @@ function initTestVideoForm() {
                     opt.classList.add("active");
                     qualityMenu.style.display = "none";
                     
-                    window.portalApi.showNotice(null, `Đã chuyển sang chất lượng ${opt.textContent}`, "success");
+                    window.portalApi.showToast(`Đã chuyển sang chất lượng ${opt.textContent}`, "success");
                 } catch (error) {
                     console.error("Lỗi đổi chất lượng:", error);
+                    window.portalApi.showToast("Không thể đổi chất lượng lúc này", "error");
                 }
             });
         });
-    }
+    };
+
+    setupQualitySettings();
 
     // ── CAMERA DASHBOARD GRID ──────────────────────────────
     function renderPreviewGrid() {

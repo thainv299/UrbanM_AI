@@ -213,38 +213,85 @@ document.addEventListener("DOMContentLoaded", () => {
     if (fields.closeServerBrowser) fields.closeServerBrowser.addEventListener("click", closeServerBrowser);
     if (fields.cancelServerBrowser) fields.cancelServerBrowser.addEventListener("click", closeServerBrowser);
 
+    const previewFields = {
+        img: document.getElementById("server-file-preview-img"),
+        placeholder: document.getElementById("server-file-preview-placeholder"),
+        loader: document.getElementById("server-file-preview-loader"),
+        info: document.getElementById("server-file-info"),
+        name: document.getElementById("server-file-info-name"),
+        size: document.getElementById("server-file-info-size"),
+    };
+
     async function openServerBrowser() {
         fields.serverBrowserModal.style.display = "flex";
         fields.serverFileList.innerHTML = '<p class="muted center">Đang tải danh sách file...</p>';
+        resetPreview();
         
         try {
             const data = await window.portalApi.get("/api/server-videos");
-            if (data.ok && data.videos && data.videos.length > 0) {
-                fields.serverFileList.innerHTML = data.videos.map(v => `
-                    <div class="file-item" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-main);">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="font-size: 1.2rem;">📹</span>
-                            <div style="overflow: hidden; text-overflow: ellipsis;">
-                                <div style="font-weight: 600; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 350px;" title="${v.filename}">${v.filename}</div>
-                                <div class="muted small">${(v.size / (1024 * 1024)).toFixed(1)} MB</div>
+            if (data.ok && data.groups && Object.keys(data.groups).length > 0) {
+                let html = "";
+                
+                // Duyệt qua từng nhóm thư mục
+                for (const [groupName, videos] of Object.entries(data.groups)) {
+                    html += `
+                        <div class="video-group" style="margin-bottom: 12px;">
+                            <div class="group-header" style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--brand-main); margin-bottom: 6px; padding-left: 4px; display: flex; align-items: center; gap: 6px;">
+                                <span>📂</span> ${groupName}
+                            </div>
+                            <div style="display: grid; gap: 8px;">
+                                ${videos.map(v => `
+                                    <div class="file-item server-video-item" 
+                                         data-filename="${v.filename}" 
+                                         data-relpath="${v.rel_path}"
+                                         data-size="${(v.size / (1024 * 1024)).toFixed(1)} MB" 
+                                         data-path="${v.path}"
+                                         style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-main); cursor: pointer; transition: all 0.2s;">
+                                        <div style="display: flex; align-items: center; gap: 10px; pointer-events: none;">
+                                            <span style="font-size: 1.2rem;">📹</span>
+                                            <div style="overflow: hidden; text-overflow: ellipsis;">
+                                                <div style="font-weight: 600; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 450px;" title="${v.filename}">${v.filename}</div>
+                                                <div class="muted small">${(v.size / (1024 * 1024)).toFixed(1)} MB</div>
+                                            </div>
+                                        </div>
+                                        <button type="button" class="button primary sm select-file-btn" data-path="${v.path}" style="flex-shrink: 0;">Chọn</button>
+                                    </div>
+                                `).join("")}
                             </div>
                         </div>
-                        <button type="button" class="button primary sm select-file-btn" data-path="${v.path}" style="flex-shrink: 0;">Chọn</button>
-                    </div>
-                `).join("");
+                    `;
+                }
+                
+                fields.serverFileList.innerHTML = html;
+
+                const items = fields.serverFileList.querySelectorAll(".server-video-item");
+                items.forEach(item => {
+                    item.addEventListener("mouseenter", () => loadPreview(item.dataset.relpath, item.dataset.filename, item.dataset.size));
+                    item.addEventListener("click", (e) => {
+                        if (e.target.classList.contains("select-file-btn")) return;
+                        loadPreview(item.dataset.relpath, item.dataset.filename, item.dataset.size);
+                    });
+                });
 
                 fields.serverFileList.querySelectorAll(".select-file-btn").forEach(btn => {
-                    btn.addEventListener("click", () => {
+                    btn.addEventListener("click", (e) => {
+                        e.stopPropagation();
                         fields.streamSource.value = btn.dataset.path;
                         fields.enableSimulation.checked = true;
                         closeServerBrowser();
                     });
                 });
+                
+                // Tự động load preview file đầu tiên
+                if (items.length > 0) {
+                    const first = items[0];
+                    loadPreview(first.dataset.relpath, first.dataset.filename, first.dataset.size);
+                }
             } else {
                 fields.serverFileList.innerHTML = `
                     <div class="center" style="padding: 40px 20px;">
                         <div style="font-size: 2rem; margin-bottom: 10px;">📂</div>
-                        <p class="muted">Không tìm thấy file video nào trong thư mục <code>data/samples</code>.</p>
+                        <p class="muted">Không tìm thấy file video nào trong thư mục <code>data/</code>.</p>
                         <p class="small muted">Hãy đảm bảo file có đuôi .mp4, .avi, .mkv...</p>
                     </div>
                 `;
@@ -258,6 +305,46 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
             `;
         }
+    }
+
+    let previewAbortController = null;
+    async function loadPreview(relPath, filename, size) {
+        if (previewAbortController) previewAbortController.abort();
+        previewAbortController = new AbortController();
+
+        previewFields.loader.style.display = "flex";
+        previewFields.placeholder.style.display = "none";
+        previewFields.info.style.display = "block";
+        previewFields.name.textContent = filename;
+        previewFields.size.textContent = size;
+
+        try {
+            const url = `/api/server-videos/preview?rel_path=${encodeURIComponent(relPath)}`;
+            const response = await fetch(url, { signal: previewAbortController.signal });
+            if (!response.ok) throw new Error("Preview failed");
+            
+            const blob = await response.blob();
+            const objectURL = URL.createObjectURL(blob);
+            
+            previewFields.img.src = objectURL;
+            previewFields.img.style.display = "block";
+            previewFields.loader.style.display = "none";
+        } catch (err) {
+            if (err.name === "AbortError") return;
+            console.error("Preview load error:", err);
+            previewFields.loader.style.display = "none";
+            previewFields.placeholder.style.display = "flex";
+            previewFields.img.style.display = "none";
+        }
+    }
+
+    function resetPreview() {
+        if (previewAbortController) previewAbortController.abort();
+        previewFields.img.src = "";
+        previewFields.img.style.display = "none";
+        previewFields.placeholder.style.display = "flex";
+        previewFields.loader.style.display = "none";
+        previewFields.info.style.display = "none";
     }
 
     function closeServerBrowser() {
