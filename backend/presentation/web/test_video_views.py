@@ -223,17 +223,27 @@ async def api_list_server_videos(user=Depends(login_required)):
     return {"ok": True, "groups": grouped_videos}
 
 @test_video_router.get("/api/server-videos/preview")
-async def api_get_server_video_preview(rel_path: str, user=Depends(login_required)):
+async def api_get_server_video_preview(path: Optional[str] = None, rel_path: Optional[str] = None, user=Depends(login_required)):
     if isinstance(user, RedirectResponse):
         return user
         
+    final_path = path or rel_path
+    if not final_path:
+        raise HTTPException(status_code=422, detail="Thiếu tham số đường dẫn (path hoặc rel_path).")
+
     import subprocess, tempfile, os
     
     data_root = PROJECT_ROOT / "data"
-    input_path = (data_root / rel_path).resolve()
     
-    # Bảo mật: Đảm bảo path vẫn nằm trong thư mục data
-    if not str(input_path).startswith(str(data_root.resolve())):
+    # Thử resolve path
+    input_path = Path(final_path)
+    if not input_path.is_absolute():
+        input_path = data_root / final_path
+    
+    input_path = input_path.resolve()
+    
+    # Bảo mật: Đảm bảo path nằm trong PROJECT_ROOT
+    if not str(input_path).startswith(str(PROJECT_ROOT.resolve())):
         raise HTTPException(status_code=403, detail="Truy cập bị từ chối.")
         
     if not input_path.exists():
@@ -274,7 +284,7 @@ async def api_get_server_video_preview(rel_path: str, user=Depends(login_require
         else:
             # Fallback nếu hoàn toàn không trích xuất được
             return StreamingResponse(
-                io.BytesIO(build_placeholder_frame("Không có preview", rel_path)),
+                io.BytesIO(build_placeholder_frame("Không có preview", str(final_path))),
                 media_type="image/jpeg"
             )
     finally:
