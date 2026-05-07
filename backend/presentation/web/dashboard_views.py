@@ -33,8 +33,6 @@ async def dashboard_page(request: Request, period: str = "all", user=Depends(log
 
 @dashboard_router.get("/api/dashboard")
 async def api_dashboard(period: str = "all", user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     return {"ok": True, "stats": container.dashboard_use_cases.get_dashboard_stats(period)}
 
 @dashboard_router.get("/settings", response_class=HTMLResponse, name="dashboard.settings_page")
@@ -52,8 +50,6 @@ async def settings_page(request: Request, user=Depends(login_required)):
 
 @dashboard_router.post("/api/settings")
 async def api_update_settings(request: Request, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     try:
         payload = await request.json()
         container.dashboard_use_cases.update_settings(payload)
@@ -63,7 +59,5 @@ async def api_update_settings(request: Request, user=Depends(login_required)):
 
 @dashboard_router.get("/api/search")
 async def api_global_search(q: str = "", user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     results = container.dashboard_use_cases.search(q)
     return {"ok": True, "results": results}

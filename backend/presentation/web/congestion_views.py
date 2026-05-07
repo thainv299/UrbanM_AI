@@ -25,9 +25,6 @@ async def api_congestion(
     user=Depends(login_required)
 ):
     """Lấy danh sách nhật ký ùn tắc"""
-    if isinstance(user, RedirectResponse):
-        return user
-    
     from database.sqlite_db import get_congestion_history
     logs = get_congestion_history()
     return {

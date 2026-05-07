@@ -121,6 +121,13 @@ class JobUseCases:
         delete_after_job: bool = False
     ) -> None:
         def handle_progress(progress: Dict[str, Any]) -> None:
+            # Kiểm tra lệnh đổi chất lượng NGAY ĐẦU HÀM để tránh bị set_job ghi đè
+            req_q = None
+            with self.job_lock:
+                job = self.jobs.get(job_id)
+                if job and job.progress:
+                    req_q = job.progress.get("requested_quality")
+
             # Kiểm tra xem người dùng có đóng tab hay ngắt Stream chưa để dừng xử lý sớm
             with self.job_lock:
                 current = self.jobs.get(job_id)
@@ -158,13 +165,14 @@ class JobUseCases:
                 progress=progress_payload,
             )
             
-            # Kiểm tra xem có lệnh thay đổi chất lượng từ UI không
-            with self.job_lock:
-                job = self.jobs.get(job_id)
-                if job and job.progress:
-                    req_q = job.progress.pop("requested_quality", None)
-                    if req_q:
-                        return {"new_quality": req_q}
+            # Trả về lệnh đổi chất lượng cho Bridge nếu có
+            if req_q:
+                # Xóa flag sau khi đã lấy ra để gửi đi
+                with self.job_lock:
+                    job = self.jobs.get(job_id)
+                    if job and job.progress:
+                        job.progress.pop("requested_quality", None)
+                return {"new_quality": req_q}
             return None
 
         self.set_job(

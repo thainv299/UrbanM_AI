@@ -186,9 +186,6 @@ async def api_upload_chunk(
     
 @test_video_router.get("/api/server-videos")
 async def api_list_server_videos(user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
-        
     data_root = PROJECT_ROOT / "data"
     if not data_root.exists():
         data_root.mkdir(parents=True, exist_ok=True)
@@ -224,9 +221,6 @@ async def api_list_server_videos(user=Depends(login_required)):
 
 @test_video_router.get("/api/server-videos/preview")
 async def api_get_server_video_preview(path: Optional[str] = None, rel_path: Optional[str] = None, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
-        
     final_path = path or rel_path
     if not final_path:
         raise HTTPException(status_code=422, detail="Thiếu tham số đường dẫn (path hoặc rel_path).")
@@ -312,9 +306,6 @@ async def api_create_test_job(
     no_parking_points: Optional[str] = Form(None),
     server_filename: Optional[str] = Form(None),
 ):
-    if isinstance(user, RedirectResponse):
-        return user
-        
     job_id = uuid.uuid4().hex
     camera = None
     camera_id_strip = (camera_id or "").strip()
@@ -404,8 +395,6 @@ async def api_create_test_job(
 
 @test_video_router.get("/api/test-jobs/{job_id}")
 async def api_get_test_job(request: Request, job_id: str, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     job = container.job_use_cases.get_job(job_id)
     if job is None:
         return JSONResponse(status_code=404, content={"ok": False, "error": "Không tìm thấy job kiểm tra."})
@@ -417,8 +406,6 @@ async def api_get_test_job(request: Request, job_id: str, user=Depends(login_req
     return {"ok": True, "job": payload}
 @test_video_router.post("/api/test-jobs/{job_id}/pause")
 async def api_pause_test_job(job_id: str, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     success = container.job_use_cases.pause_job(job_id)
     if not success:
         return JSONResponse(status_code=400, content={"ok": False, "error": "Không thể tạm dừng job này."})
@@ -427,8 +414,6 @@ async def api_pause_test_job(job_id: str, user=Depends(login_required)):
 
 @test_video_router.post("/api/test-jobs/{job_id}/stop")
 async def api_stop_test_job(job_id: str, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     success = container.job_use_cases.stop_job(job_id)
     if not success:
         return JSONResponse(status_code=400, content={"ok": False, "error": "Không thể dừng job này (có thể đã kết thúc hoặc không tồn tại)."})
@@ -437,8 +422,6 @@ async def api_stop_test_job(job_id: str, user=Depends(login_required)):
 
 @test_video_router.post("/api/test-jobs/{job_id}/resume")
 async def api_resume_test_job(job_id: str, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     success = container.job_use_cases.resume_job(job_id)
     if not success:
         return JSONResponse(status_code=400, content={"ok": False, "error": "Không thể tiếp tục job này."})
@@ -446,8 +429,6 @@ async def api_resume_test_job(job_id: str, user=Depends(login_required)):
     
 @test_video_router.post("/api/test-jobs/{job_id}/quality")
 async def api_update_job_quality(job_id: str, quality: str = Body(..., embed=True), user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     if quality not in ["low", "medium", "high", "ultra"]:
         return JSONResponse(status_code=400, content={"ok": False, "error": "Chất lượng không hợp lệ."})
         
@@ -458,7 +439,7 @@ async def api_update_job_quality(job_id: str, quality: str = Body(..., embed=Tru
 
 
 @test_video_router.get("/api/test-jobs/{job_id}/stream", name="test_video.serve_test_job_stream")
-def serve_test_job_stream(job_id: str):
+async def serve_test_job_stream(job_id: str, user=Depends(login_required)):
     return StreamingResponse(
         container.job_use_cases.stream_job_frames(job_id), 
         media_type="multipart/x-mixed-replace; boundary=frame"
@@ -471,9 +452,6 @@ async def api_extract_video_frame(
     server_filename: Optional[str] = Form(None),
     user=Depends(login_required)
 ):
-    if isinstance(user, RedirectResponse):
-        return user
-        
     import tempfile, os, base64, subprocess
     import numpy as np
     import cv2

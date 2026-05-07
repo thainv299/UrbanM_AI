@@ -26,9 +26,6 @@ async def api_vehicles(
     limit: int = 100,
 ):
     """Lấy danh sách phương tiện/biển số được phát hiện"""
-    if isinstance(user, RedirectResponse):
-        return user
-    
     from database.sqlite_db import get_detected_license_plates
     plates = get_detected_license_plates(limit)
     return {
@@ -43,9 +40,6 @@ async def api_vehicles_by_date(
     user=Depends(login_required),
 ):
     """Lấy phương tiện/biển số được phát hiện trong ngày cụ thể"""
-    if isinstance(user, RedirectResponse):
-        return user
-    
     from database.sqlite_db import get_license_plate_by_date
     plates = get_license_plate_by_date(detected_date)
     return {
@@ -60,9 +54,6 @@ async def delete_vehicle(
     user=Depends(login_required),
 ):
     """Xóa một bản ghi phương tiện"""
-    if isinstance(user, RedirectResponse):
-        return user
-    
     from database.sqlite_db import delete_license_plate_record
     success = delete_license_plate_record(record_id)
     return {"ok": success}

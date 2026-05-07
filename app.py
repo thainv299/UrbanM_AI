@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 # ---------------------------------------------------------------------------
 # Path setup
@@ -65,6 +66,9 @@ def create_app() -> FastAPI:
 
     # Session Middleware (Outer layer)
     app.add_middleware(SessionMiddleware, secret_key=str(SECRET_KEY))
+    
+    # Xử lý Proxy Headers (Cloudflare Tunnel)
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
     # Inject Template context (Global)
     templates.env.globals["current_user_obj"] = lambda request: getattr(request.state, "current_user", None)

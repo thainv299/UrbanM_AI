@@ -41,7 +41,8 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     let currentEditingCameraId = null;
-    let firstFrameDataUrl = null;
+    let lastLoadedPreviewUrl = null;
+    let lastLoadedPreviewPath = null;
 
     // Cập nhật thông báo trạng thái số điểm tọa độ
     function updatePointsStatus(targetId) {
@@ -192,49 +193,47 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.addEventListener("click", async (e) => {
             e.preventDefault();
             const targetId = btn.dataset.target;
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = "Đang lấy frame...";
-
             try {
                 let frameUrl = null;
                 const sourceValue = fields.streamSource.value.trim();
+                
+                // Chuẩn hóa đường dẫn để so sánh chính xác (tránh lỗi dấu / và \)
+                const normalizePath = (p) => p ? p.replace(/\\/g, '/').toLowerCase() : '';
+                const normalizedSource = normalizePath(sourceValue);
+                const normalizedCachePath = normalizePath(lastLoadedPreviewPath);
 
+                // ƯU TIÊN 1: Dùng ảnh preview vừa xem ở Server Browser (TỨC THÌ)
+                if (normalizedSource && normalizedSource === normalizedCachePath && lastLoadedPreviewUrl) {
+                    console.log("ROI: Tái sử dụng ảnh preview (Instant).");
+                    if (window.roiDrawingTool) {
+                        window.roiDrawingTool.openModal(targetId, lastLoadedPreviewUrl);
+                    }
+                    return; // Thoát sớm, không cần đổi text nút hay hiện loading
+                }
+
+                // Nếu không có cache, mới bắt đầu hiện loading
+                const originalText = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = "Đang lấy frame...";
+
+                // ── BẮT ĐẦU CÁC CÁCH LẤY FRAME CHẬM HƠN ──
+                
                 // 1. Nếu đang sửa camera đã lưu -> Lấy snapshot từ server
                 if (currentEditingCameraId !== null) {
-                    console.log("ROI: Lấy snapshot cho camera hiện tại", currentEditingCameraId);
                     frameUrl = await getSnapshotFromCamera(currentEditingCameraId, true);
                 }
 
-                // 2. Nếu là camera mới hoặc snapshot server lỗi -> Thử lấy từ nguồn đang nhập
+                // 2. Nếu chưa có frameUrl -> Gọi API trích xuất
                 if (!frameUrl && sourceValue) {
-                    console.log("ROI: Thử lấy frame từ nguồn nhập vào", sourceValue);
-
-                    // Nếu là webcam (số hiệu)
-                    if (/^\d+$/.test(sourceValue)) {
-                        throw new Error("Không thể trích xuất ảnh nền từ Webcam local qua trình duyệt. Hãy lưu camera và bật 'Kích hoạt' để hệ thống lấy ảnh từ luồng trực tiếp.");
-                    }
-
-                    // Nếu là file server (không phải luồng trực tiếp)
-                    if (!sourceValue.startsWith("rtsp://") && !sourceValue.startsWith("http")) {
-                        try {
-                            const resp = await fetch(`/api/server-videos/preview?path=${encodeURIComponent(sourceValue)}`);
-                            if (resp.ok) {
-                                const blob = await resp.blob();
-                                frameUrl = await new Promise(r => {
-                                    const reader = new FileReader();
-                                    reader.onloadend = () => r(reader.result);
-                                    reader.readAsDataURL(blob);
-                                });
-                            } else {
-                                const errData = await resp.json();
-                                console.warn("Lỗi API preview server:", errData);
-                            }
-                        } catch (pErr) {
-                            console.warn("Lỗi khi fetch preview server", pErr);
+                    try {
+                        const resp = await window.portalApi.post("/api/cameras/test-frame", { source: sourceValue });
+                        if (resp.ok && resp.frame) {
+                            frameUrl = resp.frame;
+                        } else {
+                            throw new Error(resp.error || "Không thể lấy ảnh xem trước.");
                         }
-                    } else if (sourceValue.startsWith("rtsp://")) {
-                        throw new Error("Luồng RTSP cần được lưu và kích hoạt camera trước khi có thể trích xuất ảnh nền.");
+                    } catch (fetchErr) {
+                        throw new Error("Không thể trích xuất ảnh. Hãy đảm bảo nguồn phát chính xác.");
                     }
                 }
 
@@ -400,6 +399,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const blob = await response.blob();
             const objectURL = URL.createObjectURL(blob);
+
+            // Lưu lại để tái sử dụng khi vẽ ROI
+            lastLoadedPreviewUrl = objectURL;
+            lastLoadedPreviewPath = path;
 
             previewFields.img.src = objectURL;
             previewFields.img.style.display = "block";

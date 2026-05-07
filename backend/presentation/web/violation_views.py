@@ -25,9 +25,6 @@ async def api_violations(
     user=Depends(login_required)
 ):
     """Lấy danh sách vi phạm đỗ xe chưa giải quyết"""
-    if isinstance(user, RedirectResponse):
-        return user
-    
     from database.sqlite_db import get_illegal_parking_violations
     violations = get_illegal_parking_violations()
     return {
@@ -42,9 +39,6 @@ async def api_resolve_violation(
     user=Depends(login_required)
 ):
     """Đánh dấu vi phạm đã giải quyết"""
-    if isinstance(user, RedirectResponse):
-        return user
-    
     from database.sqlite_db import resolve_parking_violation
     success = resolve_parking_violation(violation_id)
     if success:
