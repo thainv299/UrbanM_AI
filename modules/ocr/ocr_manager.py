@@ -170,7 +170,7 @@ class OCRManager:
                     if matched_v_id != -1:
                         self.vehicle_plates[matched_v_id] = best
                     if self.alpr_logger:
-                        self.alpr_logger.process_plate(best, frame_count, res['img_before'], clean_frame, [x1, y1, x2, y2])
+                        self.alpr_logger.process_plate(best, frame_count, res['img_before'], clean_frame, [x1, y1, x2, y2], v_track_id=matched_v_id)
                 else:
                     display_text = f"[?] {best} ({count}/{self.VOTE_THRESHOLD})"
             else:

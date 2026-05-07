@@ -1,11 +1,16 @@
+import os
 import cv2
 import uuid
+import io
+import subprocess
+import tempfile
 from pathlib import Path
-from fastapi import APIRouter, Request, Depends, status, File, UploadFile, Form
+from fastapi import APIRouter, Request, Depends, status, File, UploadFile, Form, Body
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from typing import Any, Dict, Optional
-import io
-
+import base64
+import numpy as np
+from core.utils import resolve_path
 from core.config import ALLOWED_VIDEO_EXTENSIONS, INPUTS_DIR, PROJECT_ROOT, DEFAULT_MODEL_PATH
 from core.errors import AppError, NotFoundError
 from presentation.container import container, templates
@@ -41,16 +46,12 @@ async def cameras_page(request: Request, user=Depends(login_required)):
 
 @camera_router.get("/api/cameras")
 async def api_list_cameras(user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     cameras = container.camera_use_cases.list_cameras()
     return {"ok": True, "cameras": [c.to_dict() for c in cameras]}
 
 
 @camera_router.get("/api/cameras/{camera_id}")
 async def api_get_camera(camera_id: int, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     try:
         camera = container.camera_use_cases.get_camera(camera_id)
         return {"ok": True, "camera": camera.to_dict()}
@@ -65,9 +66,6 @@ async def api_upload_camera_source(
     original_filename: Optional[str] = Form(None),
     user=Depends(login_required)
 ):
-    if isinstance(user, RedirectResponse):
-        return user
-
     import os
     import tempfile
     
@@ -109,8 +107,6 @@ async def api_upload_camera_source(
 
 @camera_router.post("/api/cameras")
 async def api_create_camera(payload: Dict[str, Any], user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     try:
         created = container.camera_use_cases.create_camera(payload)
         return JSONResponse(status_code=status.HTTP_201_CREATED, content={"ok": True, "camera": created.to_dict()})
@@ -122,19 +118,17 @@ async def api_create_camera(payload: Dict[str, Any], user=Depends(login_required
 
 @camera_router.put("/api/cameras/{camera_id}")
 async def api_update_camera(camera_id: int, payload: Dict[str, Any], user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     try:
         # Kiểm tra trạng thái is_active trước và sau khi update
         is_active_requested = payload.get("is_active")
         
         updated = container.camera_use_cases.update_camera(camera_id, payload)
         
-        # Đồng bộ luồng AI nền
-        if is_active_requested is False:
-            container.job_use_cases.stop_camera_jobs(camera_id)
-        elif is_active_requested is True:
-            # Khởi động lại nếu chưa chạy
+        # Đồng bộ luồng AI: Luôn dừng job cũ để áp dụng cấu hình mới nhất
+        container.job_use_cases.stop_camera_jobs(camera_id)
+        
+        # Nếu camera đang ở trạng thái hoạt động, khởi động lại luồng nền
+        if updated.is_active:
             container.job_use_cases.start_active_cameras(container.camera_use_cases)
             
         return {"ok": True, "camera": updated.to_dict()}
@@ -146,8 +140,6 @@ async def api_update_camera(camera_id: int, payload: Dict[str, Any], user=Depend
 
 @camera_router.delete("/api/cameras/{camera_id}")
 async def api_delete_camera(camera_id: int, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
     try:
         container.camera_use_cases.delete_camera(camera_id)
         # Dừng toàn bộ luồng AI liên quan (nền + test)
@@ -160,37 +152,131 @@ async def api_delete_camera(camera_id: int, user=Depends(login_required)):
 
 
 @camera_router.get("/api/cameras/{camera_id}/snapshot")
-async def api_camera_snapshot(camera_id: int, user=Depends(login_required)):
-    if isinstance(user, RedirectResponse):
-        return user
-        
+async def api_camera_snapshot(camera_id: int, raw: bool = False, user=Depends(login_required)):
     try:
         camera = container.camera_use_cases.get_camera(camera_id)
     except NotFoundError:
         from core.utils import build_placeholder_frame
         return StreamingResponse(io.BytesIO(build_placeholder_frame("Không tìm thấy camera.")), media_type="image/jpeg")
-
-    from core.utils import build_placeholder_frame, encode_jpeg, normalize_capture_source, prepare_snapshot_frame
+    from core.utils import build_placeholder_frame, encode_jpeg, normalize_capture_source, prepare_snapshot_frame, resolve_path
     
-    capture_source = normalize_capture_source(camera.stream_source)
+    source = camera.stream_source
+    capture_source = normalize_capture_source(source)
+    
     if capture_source is None:
         return StreamingResponse(
             io.BytesIO(build_placeholder_frame("Chưa cấu hình nguồn camera.", camera.name)),
             media_type="image/jpeg",
         )
 
+    # Nếu là file, thử resolve đường dẫn
+    is_file = False
+    if isinstance(capture_source, str) and not capture_source.startswith(("rtsp://", "http://", "https://")):
+        # Nếu đã là đường dẫn tuyệt đối và tồn tại
+        if os.path.isabs(capture_source) and os.path.exists(capture_source):
+            is_file = True
+        else:
+            # Thử tìm trong data/
+            data_path = PROJECT_ROOT / "data" / capture_source
+            if data_path.exists():
+                capture_source = str(data_path.resolve())
+                is_file = True
+            else:
+                # Thử resolve bình thường
+                p = resolve_path(capture_source)
+                if p.exists():
+                    capture_source = str(p)
+                    is_file = True
+
+    frame = None
+    success = False
+    
+    # Thử bằng OpenCV trước
     capture = cv2.VideoCapture(capture_source)
     try:
         success, frame = capture.read()
     finally:
         capture.release()
 
+    # Nếu OpenCV thất bại và là file, thử bằng FFmpeg (tốt hơn với H.265)
+    if (not success or frame is None) and is_file:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            out_jpg = tmp.name
+        try:
+            # Lấy frame tại giây thứ 1
+            subprocess.run([
+                "ffmpeg", "-y", "-i", capture_source,
+                "-ss", "00:00:01", "-frames:v", "1", "-q:v", "2", out_jpg
+            ], capture_output=True, timeout=10)
+            
+            if os.path.exists(out_jpg):
+                frame = cv2.imread(out_jpg)
+                if frame is not None:
+                    success = True
+        finally:
+            if os.path.exists(out_jpg):
+                try: os.remove(out_jpg)
+                except: pass
+
     if not success or frame is None:
-        detail = camera.stream_source or "Nguồn camera trống."
+        detail = source or "Nguồn camera trống."
         return StreamingResponse(
             io.BytesIO(build_placeholder_frame("Không đọc được hình ảnh camera.", detail)),
             media_type="image/jpeg",
         )
 
+    # Nếu raw=True, trả về ảnh gốc (không vẽ ROI lên trên) -> Dùng cho việc vẽ lại ROI
+    if raw:
+        return StreamingResponse(io.BytesIO(encode_jpeg(frame)), media_type="image/jpeg")
+
     prepared = prepare_snapshot_frame(frame, camera.to_dict())
     return StreamingResponse(io.BytesIO(encode_jpeg(prepared)), media_type="image/jpeg")
+
+@camera_router.post("/api/cameras/test-frame")
+async def api_test_camera_frame(source: str = Body(..., embed=True), user=Depends(login_required)):
+    # Xử lý source
+    stream_url = source.strip()
+    if not stream_url:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "Nguồn phát không được để trống."})
+        
+    # Hỗ trợ device ID (webcam)
+    if stream_url.isdigit():
+        stream_url = int(stream_url)
+    else:
+        # Nếu là file cục bộ, resolve path
+        if not (stream_url.startswith("rtsp://") or stream_url.startswith("http://") or stream_url.startswith("https://")):
+            p = resolve_path(stream_url)
+            if not p.exists():
+                 return JSONResponse(status_code=400, content={"ok": False, "error": f"Không tìm thấy file: {stream_url}"})
+            stream_url = str(p)
+
+    try:
+        cap = cv2.VideoCapture(stream_url)
+        if not cap.isOpened():
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Không thể kết nối đến nguồn phát."})
+        
+        # Thử lấy frame (thử tối đa 10 frame cho RTSP)
+        success = False
+        frame = None
+        for _ in range(10):
+            success, frame = cap.read()
+            if success and frame is not None:
+                break
+        
+        cap.release()
+        
+        if not success or frame is None:
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Kết nối thành công nhưng không lấy được hình ảnh."})
+        
+        # Encode sang JPG
+        _, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        jpg_as_text = base64.b64encode(buffer).decode("utf-8")
+        
+        return {
+            "ok": True, 
+            "frame": f"data:image/jpeg;base64,{jpg_as_text}",
+            "width": frame.shape[1],
+            "height": frame.shape[0]
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"Lỗi trích xuất: {str(e)}"})

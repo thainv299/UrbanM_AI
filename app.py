@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 # ---------------------------------------------------------------------------
 # Path setup
@@ -65,6 +66,9 @@ def create_app() -> FastAPI:
 
     # Session Middleware (Outer layer)
     app.add_middleware(SessionMiddleware, secret_key=str(SECRET_KEY))
+    
+    # Xử lý Proxy Headers (Cloudflare Tunnel)
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
     # Inject Template context (Global)
     templates.env.globals["current_user_obj"] = lambda request: getattr(request.state, "current_user", None)
@@ -118,6 +122,13 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup_event():
+        # 0. Dọn dẹp CSDL định kỳ
+        from backend.database.sqlite_db import cleanup_old_data
+        try:
+            cleanup_old_data(days_to_keep=90)
+        except Exception as e:
+            print(f"[Database] Lỗi dọn dẹp định kỳ: {e}")
+
         # Khởi động các camera active ngay khi server chạy
         print("[System] Khởi động luồng xử lý camera nền...")
         container.job_use_cases.start_active_cameras(container.camera_use_cases)

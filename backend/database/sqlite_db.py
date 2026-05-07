@@ -13,6 +13,90 @@ def connect() -> sqlite3.Connection:
     return connection
 
 
+def cleanup_old_data(days_to_keep: int = 90) -> None:
+    """Xóa dữ liệu lịch sử cũ hơn N ngày để tránh phình CSDL (Mặc định 3 tháng)"""
+    from datetime import datetime, timedelta
+    # Định dạng ISO cho các bảng lịch sử chi tiết
+    cutoff_datetime = (datetime.now() - timedelta(days=days_to_keep)).strftime("%Y-%m-%d %H:%M:%S")
+    # Định dạng ngày (YYYY-MM-DD) cho bảng thống kê gộp
+    cutoff_date_only = (datetime.now() - timedelta(days=days_to_keep)).strftime("%Y-%m-%d")
+    
+    print(f"[Database] Đang dọn dẹp dữ liệu cũ hơn {days_to_keep} ngày...")
+    try:
+        with connect() as connection:
+            # 1. Xóa lịch sử phương tiện chi tiết
+            connection.execute(
+                "DELETE FROM lich_su_phuong_tien WHERE thoi_gian_di_qua < ?",
+                (cutoff_datetime,)
+            )
+            # 2. Xóa lịch sử biển số
+            connection.execute(
+                "DELETE FROM bien_so_phat_hien WHERE ngay_tao < ?",
+                (cutoff_datetime,)
+            )
+            # 3. Xóa vi phạm đỗ xe cũ
+            connection.execute(
+                "DELETE FROM vi_pham_do_xe WHERE thoi_gian_vi_pham < ?",
+                (cutoff_datetime,)
+            )
+            # 4. Xóa thống kê gộp cũ (Để đồng nhất biểu đồ)
+            connection.execute(
+                "DELETE FROM thong_ke_giao_thong WHERE ngay_ghi_nhan < ?",
+                (cutoff_date_only,)
+            )
+            
+            connection.commit()
+            
+        # VACUUM để thu hồi dung lượng đĩa
+        conn = sqlite3.connect(DATABASE_PATH)
+        conn.execute("VACUUM")
+        conn.close()
+        print(f"[Database] Đã dọn dẹp toàn bộ dữ liệu cũ hơn {days_to_keep} ngày và nén CSDL thành công.")
+    except Exception as e:
+        print(f"[Database] Lỗi trong quá trình dọn dẹp định kỳ: {e}")
+
+
+def delete_license_plate_record(record_id: int) -> bool:
+    """Xóa một bản ghi biển số/phương tiện theo ID và xóa cả ảnh trên đĩa"""
+    import os
+    from pathlib import Path
+    try:
+        # 1. Lấy đường dẫn ảnh trước khi xóa bản ghi
+        image_paths = None
+        with connect() as connection:
+            row = connection.execute("SELECT duong_dan_anh FROM bien_so_phat_hien WHERE id = ?", (record_id,)).fetchone()
+            if row:
+                image_paths = row["duong_dan_anh"]
+        
+        # 2. Xóa ảnh vật lý trên đĩa
+        if image_paths:
+            # image_paths có thể là chuỗi phân tách bởi dấu phẩy
+            paths = image_paths.split(',')
+            for p in paths:
+                p = p.strip()
+                if not p: continue
+                # Chuyển đổi đường dẫn web (logs/plates/...) thành đường dẫn vật lý
+                # logs/plates/2026/05/06/... -> logs/plates/2026/05/06/...
+                # PROJECT_ROOT được định nghĩa ở trên là backend/
+                # Nhưng thực tế logs/ nằm ở project root.
+                full_path = Path(p)
+                if full_path.exists():
+                    try:
+                        os.remove(full_path)
+                        print(f"[Database] Đã xóa ảnh: {full_path}")
+                    except Exception as e:
+                        print(f"[Database] Không thể xóa file {full_path}: {e}")
+
+        # 3. Xóa bản ghi trong DB
+        with connect() as connection:
+            connection.execute("DELETE FROM bien_so_phat_hien WHERE id = ?", (record_id,))
+            connection.commit()
+            return True
+    except Exception as e:
+        print(f"[Database] Lỗi khi xóa bản ghi {record_id}: {e}")
+        return False
+
+
 def init_db() -> None:
     """Khởi tạo cấu trúc bảng nếu chưa có"""
     with connect() as connection:
@@ -162,17 +246,11 @@ def init_db() -> None:
         connection.commit()
 
 
-def get_total_vehicle_count() -> int:
-    """Lấy tổng số xe đi qua"""
-    with connect() as connection:
-        row = connection.execute(
-            "SELECT SUM(so_luong_xe) as total FROM thong_ke_giao_thong"
-        ).fetchone()
-    return int(row["total"]) if row["total"] else 0
+
 
 
 def get_illegal_parking_violations() -> list:
-    """Lấy danh sách xe đỗ sai (chưa giải quyết)"""
+    """Lấy danh sách xe đỗ sai (giới hạn 50 bản ghi gần nhất)"""
     with connect() as connection:
         rows = connection.execute(
             """
@@ -187,6 +265,25 @@ def get_illegal_parking_violations() -> list:
         ).fetchall()
     return [dict(row) for row in rows]
 
+def get_illegal_parking_count(start_date: str = None, end_date: str = None) -> int:
+    """Lấy tổng số vi phạm đỗ xe trong khoảng thời gian"""
+    query = "SELECT COUNT(*) as total FROM vi_pham_do_xe"
+    params = []
+    
+    if start_date or end_date:
+        conditions = []
+        if start_date:
+            conditions.append("DATE(thoi_gian_vi_pham) >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("DATE(thoi_gian_vi_pham) <= ?")
+            params.append(end_date)
+        query += " WHERE " + " AND ".join(conditions)
+        
+    with connect() as connection:
+        row = connection.execute(query, params).fetchone()
+    return row["total"] if row and row["total"] else 0
+
 def resolve_parking_violation(violation_id: int) -> bool:
     """Đánh dấu vi phạm đỗ xe đã được giải quyết"""
     with connect() as connection:
@@ -198,18 +295,23 @@ def resolve_parking_violation(violation_id: int) -> bool:
         return cursor.rowcount > 0
 
 
-def get_congestion_count() -> int:
-    """Lấy số lần tắc nghẽn trong hôm nay"""
-    from datetime import datetime
-    today = datetime.now().strftime("%Y-%m-%d")
+def get_congestion_count(start_date: str = None, end_date: str = None) -> int:
+    """Lấy tổng số lần tắc nghẽn trong khoảng thời gian"""
+    query = "SELECT COUNT(*) as total FROM nhat_ky_un_tac"
+    params = []
+    
+    if start_date or end_date:
+        conditions = []
+        if start_date:
+            conditions.append("DATE(thoi_gian_bat_dau) >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("DATE(thoi_gian_bat_dau) <= ?")
+            params.append(end_date)
+        query += " WHERE " + " AND ".join(conditions)
+        
     with connect() as connection:
-        row = connection.execute(
-            """
-            SELECT COUNT(*) as total FROM nhat_ky_un_tac
-            WHERE DATE(thoi_gian_bat_dau) = ?
-            """,
-            (today,)
-        ).fetchone()
+        row = connection.execute(query, params).fetchone()
     return row["total"] if row and row["total"] else 0
 
 def get_congestion_history() -> list:
@@ -228,18 +330,96 @@ def get_congestion_history() -> list:
         ).fetchall()
     return [dict(row) for row in rows]
 
+def get_daily_vehicle_stats(start_date: str = None, end_date: str = None, limit: int = 30) -> list:
+    """Lấy thống kê lưu lượng xe hàng ngày, có hỗ trợ lọc theo khoảng thời gian"""
+    query = "SELECT ngay_ghi_nhan as date, SUM(so_luong_xe) as count FROM thong_ke_giao_thong"
+    params = []
+    
+    if start_date or end_date:
+        conditions = []
+        if start_date:
+            conditions.append("ngay_ghi_nhan >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("ngay_ghi_nhan <= ?")
+            params.append(end_date)
+        query += " WHERE " + " AND ".join(conditions)
+    
+    query += " GROUP BY ngay_ghi_nhan ORDER BY ngay_ghi_nhan DESC LIMIT ?"
+    params.append(limit)
+    
+    with connect() as connection:
+        rows = connection.execute(query, params).fetchall()
+    return [dict(row) for row in reversed(rows)]
 
-def log_vehicle_count(camera_id: int, count: int, recorded_date: str = None) -> None:
-    """Ghi lại số xe đi qua"""
+def get_latest_violations(limit: int = 5) -> list:
+    """Lấy danh sách vi phạm mới nhất"""
+    with connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT pv.id, pv.bien_so as license_plate, pv.thoi_gian_vi_pham as time, 
+                   c.ten_camera as camera_name
+            FROM vi_pham_do_xe pv
+            LEFT JOIN camera c ON pv.id_camera = c.id
+            ORDER BY pv.thoi_gian_vi_pham DESC
+            LIMIT ?
+            """,
+            (limit,)
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+def get_total_vehicle_count(start_date: str = None, end_date: str = None) -> int:
+    """Lấy tổng số xe đi qua trực tiếp từ bảng lịch sử (loại bỏ person và license_plate)"""
+    query = "SELECT COUNT(*) as total FROM lich_su_phuong_tien WHERE loai_xe NOT IN ('person', 'license_plate')"
+    params = []
+    
+    if start_date or end_date:
+        if start_date:
+            query += " AND thoi_gian_di_qua >= ?"
+            params.append(f"{start_date} 00:00:00")
+        if end_date:
+            query += " AND thoi_gian_di_qua <= ?"
+            params.append(f"{end_date} 23:59:59")
+        
+    with connect() as connection:
+        row = connection.execute(query, params).fetchone()
+    return int(row["total"]) if row["total"] else 0
+
+def get_vehicle_type_distribution(start_date: str = None, end_date: str = None) -> list:
+    """Lấy tỷ lệ các loại phương tiện trong khoảng thời gian xác định (loại bỏ person và license_plate)"""
+    query = "SELECT loai_xe as type, COUNT(*) as count FROM lich_su_phuong_tien WHERE loai_xe NOT IN ('person', 'license_plate')"
+    params = []
+    
+    if start_date or end_date:
+        if start_date:
+            query += " AND thoi_gian_di_qua >= ?"
+            params.append(f"{start_date} 00:00:00")
+        if end_date:
+            query += " AND thoi_gian_di_qua <= ?"
+            params.append(f"{end_date} 23:59:59")
+    
+    query += " GROUP BY loai_xe ORDER BY count DESC"
+    
+    with connect() as connection:
+        rows = connection.execute(query, params).fetchall()
+    return [dict(row) for row in rows]
+
+
+def log_vehicle_count(camera_id: int, vehicle_type: str, count: int = 1) -> None:
+    """Ghi nhận số lượng xe theo loại và ngày (loại bỏ người và biển số)"""
+    if vehicle_type in ['person', 'license_plate']:
+        return
+        
     from datetime import datetime
-    if recorded_date is None:
-        recorded_date = datetime.now().strftime("%Y-%m-%d")
+    recorded_date = datetime.now().strftime("%Y-%m-%d")
     
     with connect() as connection:
         connection.execute(
             """
-            INSERT OR REPLACE INTO thong_ke_giao_thong (id_camera, so_luong_xe, ngay_ghi_nhan)
+            INSERT INTO thong_ke_giao_thong (id_camera, so_luong_xe, ngay_ghi_nhan)
             VALUES (?, ?, ?)
+            ON CONFLICT(id_camera, ngay_ghi_nhan) 
+            DO UPDATE SET so_luong_xe = so_luong_xe + EXCLUDED.so_luong_xe
             """,
             (camera_id, count, recorded_date)
         )
@@ -314,19 +494,23 @@ def update_congestion_end_time(congestion_id: int, end_time: str = None) -> None
             connection.commit()
 
 
-def log_passed_vehicle(camera_id: int, bien_so_xe: str, loai_xe: str, thoi_gian_di_qua: str = None) -> None:
-    """Ghi lại lịch sử phương tiện đi qua"""
+def log_passed_vehicle(camera_id: int, bien_so_xe: str, loai_xe: str, thoi_gian_di_qua: str = None, duong_dan_anh: str = None) -> None:
+    """Ghi lại lịch sử phương tiện đi qua có kèm ảnh"""
     from datetime import datetime
     if thoi_gian_di_qua is None:
         thoi_gian_di_qua = datetime.now().isoformat()
     
+    # Chuẩn hóa đường dẫn ảnh
+    if duong_dan_anh:
+        duong_dan_anh = duong_dan_anh.replace("\\", "/").replace("runtime/vehicles/", "logs/vehicles/")
+        
     with connect() as connection:
         connection.execute(
             """
-            INSERT INTO lich_su_phuong_tien (id_camera, bien_so_xe, loai_xe, thoi_gian_di_qua)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO lich_su_phuong_tien (id_camera, bien_so_xe, loai_xe, thoi_gian_di_qua, duong_dan_anh)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (camera_id, bien_so_xe, loai_xe, thoi_gian_di_qua)
+            (camera_id, bien_so_xe, loai_xe, thoi_gian_di_qua, duong_dan_anh)
         )
         connection.commit()
 
@@ -363,7 +547,7 @@ def get_detected_license_plates(limit: int = 100) -> list:
     with connect() as connection:
         rows = connection.execute(
             """
-            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time, 
+            SELECT id, bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time, 
                    so_lan_phat_hien as detection_count, do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
             FROM bien_so_phat_hien
             ORDER BY ngay_phat_hien DESC, thoi_gian_phat_hien DESC
@@ -379,7 +563,7 @@ def get_license_plate_by_date(detected_date: str) -> list:
     with connect() as connection:
         rows = connection.execute(
             """
-            SELECT bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time,
+            SELECT id, bien_so as license_plate, ngay_phat_hien as detected_date, thoi_gian_phat_hien as detected_time,
                    so_lan_phat_hien as detection_count, do_chinh_xac_tb as avg_confidence, duong_dan_anh as image_paths
             FROM bien_so_phat_hien
             WHERE ngay_phat_hien = ?
